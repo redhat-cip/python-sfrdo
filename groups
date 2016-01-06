@@ -1,3 +1,5 @@
-# UUID                                  	Group Name
-#
-3aa3b4139063bdb37f90612a6a52d8cfe8517290	python-sfrdo-ptl
+# UUID          Group Name
+9562193e1f1647ee1c2004b4fb7996e84ae7e717 	Non-Interactive Users
+58894e1ecbcc081fc1e99867cca7b0f3a4365803       	python-sfrdo-core
+3aa3b4139063bdb37f90612a6a52d8cfe8517290        	python-sfrdo-ptl
+global:Registered-Users		Registered Users
