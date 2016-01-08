@@ -1,0 +1,6 @@
+*.py[cod]
+.tox
+*.sw[op]
+*.egg
+*.egg-info
+sfmanager.log
