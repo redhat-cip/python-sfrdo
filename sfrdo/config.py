@@ -16,9 +16,9 @@
 
 import os
 
-userdir =  os.path.join(os.path.expanduser('~/'), '.sfrdo')
+userdir = os.path.join(os.path.expanduser('~/'), '.sfrdo')
 
-rdoinfo = 'https://github.com/redhat-openstack/rdoinfo.git' 
+rdoinfo = 'https://github.com/redhat-openstack/rdoinfo.git'
 
 rpmfactory = 'rpmfactory.beta.rdoproject.org'
 gerrit_rpmfactory = 'ssh://%%s@%s:29418/' % rpmfactory

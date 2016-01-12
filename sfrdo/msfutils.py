@@ -17,7 +17,6 @@
 import os
 import sys
 import shlex
-import urlparse
 import subprocess
 
 
@@ -56,7 +55,7 @@ class ManageSfUtils(Tool):
     def __init__(self, url, user, passwd):
         Tool.__init__(self)
         self.base_cmd = "sfmanager --url %s " \
-            "--auth %s:%s " % (url, user, passwd) 
+            "--auth %s:%s " % (url, user, passwd)
 
     def createProject(self, name, options=None):
         cmd = self.base_cmd + " project create --name %s " % name
@@ -67,7 +66,6 @@ class ManageSfUtils(Tool):
         out, code = self.exe(cmd)
         if code:
             raise SFManagerException(out)
-        
 
     def deleteProject(self, name):
         cmd = self.base_cmd + " project delete --name %s" % name
