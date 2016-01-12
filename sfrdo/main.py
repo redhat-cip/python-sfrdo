@@ -57,6 +57,7 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
     parts = urlparse.urlparse(distgit)
     distgit = urlparse.urlunparse(['git', parts.netloc, parts.path, '', '', ''])
 
+    mdistgit = infos['master-distgit']
     mirror = infos['patches']
     upstream = infos['upstream']
     name = infos['project']
@@ -64,17 +65,18 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
     sfdistgit = "%s-distgit" % name
     conf = infos['conf']
     return (name, distgit, mirror, upstream,
-           sfdistgit, maints, conf)
+           sfdistgit, maints, conf, mdistgit)
 
 
 def display_details(cmdargs, rdoinfo, workdir=None):
     name, distgit, mirror, upstream, \
-        sfdistgit, maintsi, conf = fetch_project_infos(rdoinfo,
+        sfdistgit, maintsi, conf, mdistgit = fetch_project_infos(rdoinfo,
                                                        cmdargs.name)
     print "=== Details ==="
     print "Project name is: %s" % name
     print "Project type is: %s" % conf
     print "Project upstream RDO distgit is: %s" % distgit
+    print "Project upstream RDO master-distgit is: %s" % mdistgit
     print "Project upstream RDO mirror is: %s (won't be used)" % mirror
 
     print "Project upstream is: %s" % upstream
@@ -136,10 +138,15 @@ def is_branches_exists(expected_remotes_branches):
             raise BranchNotFoundException("%s does not exist" % bn)
 
 
-def import_distgit(msf, sfgerrit, sfdistgit, distgit, conf, workdir):
+def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
+                   conf, workdir):
     print "=== Import distgit ==="
-    create_baseproject(msf, sfdistgit,
-                       "\"Packaging content for %s (distgit)\"" % sfdistgit.split('-')[0])
+    try:
+        create_baseproject(msf, sfdistgit,
+                           "\"Packaging content for %s (distgit)\"" % sfdistgit.split('-')[0])
+    except msfutils.SFManagerException, e:
+        print "Unable to create %s: %s" % (sfdistgit, e)
+        sys.exit(1)
     with cdir(workdir):
         git('clone', 'http://%s/r/%s' % (config.rpmfactory, sfdistgit),
             sfdistgit)
@@ -147,23 +154,34 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, conf, workdir):
         # Set remotes and fetch objects
         git('remote', 'add', 'gerrit', sfgerrit + sfdistgit)
         git('remote', 'add', 'upstream', distgit)
+        git('remote', 'add', 'upstream-mdistgit', mdistgit)
         git('fetch', '--all')
 
         # Behave correctly according to project type and actual upstream layout
         if conf == 'core':
-            is_branches_exists([('upstream', 'rdo-liberty')])
+            is_branches_exists([('upstream', 'rdo-liberty'),
+                                ('upstream-mdistgit', 'rpm-master')])
             sync_and_push_branch('upstream', 'gerrit', 'rdo-liberty')
+            sync_and_push_branch('upstream-mdistgit', 'gerrit',
+                                 'rpm-master', 'master')
         elif conf == 'client':
-            is_branches_exists([('upstream', 'master')])
+            is_branches_exists([('upstream', 'master'),
+                                ('upstream-mdistgit', 'rpm-master')])
             # Assume master targets liberty atm
             sync_and_push_branch('upstream', 'gerrit', 'master', 'rdo-liberty')
+            sync_and_push_branch('upstream-mdistgit', 'gerrit',
+                                 'rpm-master', 'master')
 
 
 
 def import_mirror(msf, sfgerrit, name, mirror, upstream, workdir):
     print "=== Import mirror ==="
-    create_baseproject(msf, name,
-                       "\"Mirror of upstream %s (mirror + patches)\"" % name)
+    try:
+        create_baseproject(msf, name,
+                           "\"Mirror of upstream %s (mirror + patches)\"" % name)
+    except msfutils.SFManagerException, e:
+        print "Unable to create %s: %s" % (sfdistgit, e)
+        sys.exit(1)
     with cdir(workdir):
         git('clone', 'http://%s/r/%s' % (config.rpmfactory, name),
             name)
@@ -186,6 +204,7 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
                           workdir):
     print "=== Compute and create the patches branch on mirror ==="
     with cdir(os.path.join(workdir, sfdistgit)):
+        git('checkout', 'rdo-liberty')
         # Fetch flats file patches
         flat_patches = list(fetch_flat_patches())
         print "%s owns %s patches" % (sfdistgit, len(flat_patches))
@@ -216,7 +235,7 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
 def project_import(cmdargs, workdir, rdoinfo):
     print "=== Start import ==="
     name, distgit, mirror, upstream, \
-        sfdistgit, maintsi, conf = fetch_project_infos(rdoinfo,
+        sfdistgit, maints, conf, mdistgit = fetch_project_infos(rdoinfo,
                                                        cmdargs.name)
     print "Workdir is: %s" % workdir
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
@@ -226,7 +245,8 @@ def project_import(cmdargs, workdir, rdoinfo):
     if not cmdargs.only_patches_branch:
         try:
             import_distgit(msf, sfgerrit,
-                           sfdistgit, distgit, conf, workdir)
+                           sfdistgit, distgit, mdistgit,
+                           conf, workdir)
         except BranchNotFoundException, e:
             print "Unable to find a specific branch to import distgit: %s" % e
             sys.exit(1)

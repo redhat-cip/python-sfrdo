@@ -21,6 +21,10 @@ import urlparse
 import subprocess
 
 
+class SFManagerException(Exception):
+    pass
+
+
 class Tool:
     def __init__(self):
         self.debug = None
@@ -45,7 +49,7 @@ class Tool:
                 self.debug.write(output)
         finally:
             os.chdir(ocwd)
-        return output
+        return output, p.returncode
 
 
 class ManageSfUtils(Tool):
@@ -60,13 +64,20 @@ class ManageSfUtils(Tool):
             for k, v in options.items():
                 cmd = cmd + " --" + k + " " + v
 
-        self.exe(cmd)
+        out, code = self.exe(cmd)
+        if code:
+            raise SFManagerException(out)
+        
 
     def deleteProject(self, name):
         cmd = self.base_cmd + " project delete --name %s" % name
-        self.exe(cmd)
+        out, code = self.exe(cmd)
+        if code:
+            raise SFManagerException(out)
 
     def addUsertoProjectGroups(self, project, email, groups):
         cmd = self.base_cmd + " membership add --project %s " % project
         cmd = cmd + " --user %s --groups %s" % (email, groups)
-        self.exe(cmd)
+        out, code = self.exe(cmd)
+        if code:
+            raise SFManagerException(out)
