@@ -17,6 +17,8 @@
 import os
 import sys
 import imp
+import json
+import requests
 import urlparse
 import tempfile
 import argparse
@@ -237,6 +239,16 @@ def project_import(cmdargs, workdir, rdoinfo):
     name, distgit, mirror, upstream, \
         sfdistgit, maints, conf, mdistgit = fetch_project_infos(rdoinfo,
                                                        cmdargs.name)
+
+    r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
+    projects = json.loads(r.text[4:])
+
+    if name in projects:
+        if not cmdargs.force:
+            print "Project %s already exists" % name
+            sys.exit(1)
+        print "Project %s already exists. But force !" % name
+
     print "Workdir is: %s" % workdir
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
@@ -284,6 +296,9 @@ def main():
     parser_import.add_argument('--only-patches-branch',
                                action='store_true', default=False,
                                help='Only act on the patches branch (need a workdir)')
+    parser_import.add_argument('--force',
+                               action='store_true', default=False,
+                               help='Overwrite a project if already exists')
 
     parser_create = subparsers.add_parser(
         'create',
