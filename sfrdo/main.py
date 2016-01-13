@@ -286,7 +286,39 @@ def project_create(cmdargs, workdir, rdoinfo):
 
 
 def project_sync_maints(cmdargs, workdir, rdoinfo):
-    pass
+    (name, distgit, mirror, upstream,
+     sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
+                                                              cmdargs['name'])
+    for maintainer in maints:
+        try:
+            msg = "Looking up %s on Github... " % maintainer
+            print msg,
+            user_info = msfutils.get_github_user_by_mail(maintainer)
+            print "Found user %s" % user_info['username']
+        except Exception as e:
+            username = maintainer.split('@')[0]
+            msg = "Could not find user, login will default to %s" % username
+            print msg
+            print "(Reason: %s)" % e.message
+            user_info = {"username": username,
+                         "email": maintainer,
+                         "full_name": username,
+                         "ssh_keys": []}
+        r = msfutils.provision_user('htp://' + config.rpmfactory,
+                                    ('admin', config.adminpass),
+                                    user_info)
+        if r.status_code > 399:
+            print "Could not register user in rpmfactory :("
+        else:
+            print "User registered in rpmfactory"
+            msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                         'admin', config.adminpass)
+            msf.addUsertoProjectGroups(cmdargs.get('name'),
+                                       maintainer,
+                                       ['core', 'ptl'])
+            msf.addUsertoProjectGroups(cmdargs.get('name') + '-distgit',
+                                       maintainer,
+                                       ['core', 'ptl'])
 
 
 def main():
