@@ -18,6 +18,7 @@ import os
 import sys
 import imp
 import json
+import logging
 import requests
 import urlparse
 import tempfile
@@ -29,6 +30,21 @@ from rdopkg.utils.cmd import git
 
 from sfrdo import config
 from sfrdo import msfutils
+
+
+logging.basicConfig(filename='warns.log', level=logging.DEBUG)
+
+
+BL = ['aodh',  # clone on SF fails ... !
+      'app-catalog-ui',  # same as aodh :/
+      'instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
+      'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
+      'cloudkittyclient',  # distgit project not found on pkg.fedoraproject.org
+      'tripleoclient',  # distgit project not found on pkg.fedoraproject.org
+      'openstacksdk',  # distgit project not found on pkg.fedoraproject.org
+      'dracclient',  # distgit project not found on pkg.fedoraproject.org
+      'mistralclient',  # distgit project not found on pkg.fedoraproject.org
+      ]
 
 
 class BranchNotFoundException(Exception):
@@ -50,7 +66,8 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
     select = [pkg for pkg in rdoinfo['packages']
               if pkg['project'] == upstream_project_name]
     if not select:
-        raise Exception('Project not found in rdoinfo')
+        raise Exception('Project not found in rdoinfo: %s' %
+                        upstream_project_name)
     infos = select[0]
 
     distgit = infos['distgit']
@@ -89,6 +106,12 @@ def display_details(cmdargs, rdoinfo, workdir=None):
     print
 
 
+def fetch_all_project_type(rdoinfo, t):
+    select = [pkg for pkg in rdoinfo['packages']]
+    return [p['project'] for p in select if
+            'conf' in p and p['conf'] == t]
+
+
 def create_baseproject(msf, name, desc):
     print "Delete previous %s" % name
     msf.deleteProject(name)
@@ -114,7 +137,7 @@ def sync_and_push_branch(rfrom, rto, branch, tbranch=None):
     git('push', '-f', rto, tbranch)
 
 
-def fetch_flat_patches():
+def fetch_flat_patches(name):
     patches = set([f for f in os.listdir('.') if
                    f.endswith('.patch') and f[4] == '-'])
     spec = file([s for s in os.listdir('.') if
@@ -123,8 +146,10 @@ def fetch_flat_patches():
                     p.startswith('Patch00')]
     used_patches = set([p.lstrip().rstrip('\n') for _, p in used_patches])
     if len(patches) != len(used_patches):
-        print "warn: %s flat file patches exists but are not used" % \
-            len(patches - used_patches)
+        msg = "(%s) %s flat file patches exists but are not used" % \
+            (name, len(patches - used_patches))
+        logging.warning(msg)
+        print msg
     return used_patches
 
 
@@ -216,7 +241,7 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
     with cdir(os.path.join(workdir, sfdistgit)):
         git('checkout', 'rdo-liberty')
         # Fetch flats file patches
-        flat_patches = list(fetch_flat_patches())
+        flat_patches = list(fetch_flat_patches(name))
         print "%s owns %s patches" % (sfdistgit, len(flat_patches))
 
         # Fetch upstream tag based on the spec file
@@ -226,7 +251,9 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
         try:
             is_branches_exists([('mirror', 'liberty-patches')])
         except BranchNotFoundException, e:
-            print "Upstream layout warn: %s. but we continue" % e
+            msg = "(%s) Upstream layout warn: %s. but we continue" % (name, e)
+            logging.warning(msg)
+            print msg
 
         print "Create %s based on tag %s" % ('liberty-patches', version)
         git('checkout', version)
@@ -243,7 +270,7 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
 
 
 def project_import(cmdargs, workdir, rdoinfo):
-    print "=== Start import ==="
+    print "\n=== Start import ==="
     name, distgit, mirror, upstream, \
         sfdistgit, maints, conf, mdistgit = \
         fetch_project_infos(rdoinfo, cmdargs.name)
@@ -251,10 +278,15 @@ def project_import(cmdargs, workdir, rdoinfo):
     r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
     projects = json.loads(r.text[4:])
 
-    if name in projects:
-        if not cmdargs.force:
-            print "Project %s already exists" % name
-            sys.exit(1)
+    create = True
+    if set([name, sfdistgit]).issubset(set(projects)):
+        create = False
+
+    if not cmdargs.force and not create:
+        print "Project %s and %s already exists" % (name, sfdistgit)
+        return
+
+    if cmdargs.force and not create:
         print "Project %s already exists. But force !" % name
 
     print "Workdir is: %s" % workdir
@@ -268,14 +300,19 @@ def project_import(cmdargs, workdir, rdoinfo):
                            sfdistgit, distgit, mdistgit,
                            conf, workdir)
         except BranchNotFoundException, e:
-            print "Unable to find a specific branch to import distgit: %s" % e
-            sys.exit(1)
+            msg = "(%s) Unable to find a specific branch to import" % name + \
+                "distgit: %s" % e
+            logging.warning(msg)
+            print msg
+            return
         try:
             import_mirror(msf, sfgerrit, name, mirror, upstream, workdir)
         except BranchNotFoundException, e:
-            print "Unable to find a specific branch to import" + \
+            msg = "(%s) Unable to find a specific branch to import" % name + \
                 " the mirror repo: %s" % e
-            sys.exit(1)
+            logging.warning(msg)
+            print msg
+            return
 
     set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
                           workdir)
@@ -301,7 +338,10 @@ def main():
     parser_import = subparsers.add_parser(
         'import',
         help='Import an existing RDO project (need admin creds)')
-    parser_import.add_argument('name', type=str, help='project name')
+    parser_import.add_argument('--name', type=str, help='project name')
+    parser_import.add_argument(
+        '--type', type=str, default=None,
+        help='Import all project of type (core, client, lib)')
     parser_import.add_argument(
         '--only-patches-branch',
         action='store_true', default=False,
@@ -333,8 +373,18 @@ def main():
              'rdoinfo': rdoinfo}
 
     if args.command == 'import':
-        display_details(**kargs)
-        project_import(**kargs)
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+        else:
+            projects = [args.name]
+        print "Import projects : %s" % ", ".join(projects)
+        for project in projects:
+            if project in BL:
+                print "Skip %s as BL" % project
+                continue
+            kargs['cmdargs'].name = project
+            display_details(**kargs)
+            project_import(**kargs)
     elif args.command == 'create':
         project_create(**kargs)
     elif args.command == 'sync_maints':
