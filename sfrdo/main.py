@@ -79,18 +79,17 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
                                    parts.path, '', '', ''])
 
     mdistgit = infos['master-distgit']
-    mirror = infos['patches']
     upstream = infos['upstream']
     name = infos['project']
     maints = infos['maintainers']
     sfdistgit = "%s-distgit" % name
     conf = infos['conf']
-    return (name, distgit, mirror, upstream,
+    return (name, distgit, upstream,
             sfdistgit, maints, conf, mdistgit)
 
 
 def display_details(cmdargs, rdoinfo, workdir=None):
-    name, distgit, mirror, upstream, \
+    name, distgit, upstream, \
         sfdistgit, maintsi, conf, \
         mdistgit = fetch_project_infos(rdoinfo, cmdargs.name)
     print "=== Details ==="
@@ -98,7 +97,6 @@ def display_details(cmdargs, rdoinfo, workdir=None):
     print "Project type is: %s" % conf
     print "Project upstream RDO distgit is: %s" % distgit
     print "Project upstream RDO master-distgit is: %s" % mdistgit
-    print "Project upstream RDO mirror is: %s (won't be used)" % mirror
 
     print "Project upstream is: %s" % upstream
 
@@ -208,7 +206,7 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
                                  'rpm-master', 'master')
 
 
-def import_mirror(msf, sfgerrit, name, mirror, upstream, workdir):
+def import_mirror(msf, sfgerrit, name, upstream, workdir):
     print "=== Import mirror ==="
     try:
         create_baseproject(msf, name,
@@ -235,7 +233,7 @@ def import_mirror(msf, sfgerrit, name, mirror, upstream, workdir):
         git('push', 'gerrit', '--tags')
 
 
-def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
+def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
                           workdir):
     print "=== Compute and create the patches branch on mirror ==="
     with cdir(os.path.join(workdir, sfdistgit)):
@@ -248,13 +246,6 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
         version = fetch_upstream_tag_name()
         print "%s packaging is based on tag %s" % (sfdistgit, version)
     with cdir(os.path.join(workdir, name)):
-        try:
-            is_branches_exists([('mirror', 'liberty-patches')])
-        except BranchNotFoundException, e:
-            msg = "(%s) Upstream layout warn: %s. but we continue" % (name, e)
-            logging.warning(msg)
-            print msg
-
         print "Create %s based on tag %s" % ('liberty-patches', version)
         git('checkout', version)
         git('checkout', '-B', 'liberty-patches')
@@ -271,7 +262,7 @@ def set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
 
 def project_import(cmdargs, workdir, rdoinfo):
     print "\n=== Start import ==="
-    name, distgit, mirror, upstream, \
+    name, distgit, upstream, \
         sfdistgit, maints, conf, mdistgit = \
         fetch_project_infos(rdoinfo, cmdargs.name)
 
@@ -306,7 +297,7 @@ def project_import(cmdargs, workdir, rdoinfo):
             print msg
             return
         try:
-            import_mirror(msf, sfgerrit, name, mirror, upstream, workdir)
+            import_mirror(msf, sfgerrit, name, upstream, workdir)
         except BranchNotFoundException, e:
             msg = "(%s) Unable to find a specific branch to import" % name + \
                 " the mirror repo: %s" % e
@@ -314,7 +305,7 @@ def project_import(cmdargs, workdir, rdoinfo):
             print msg
             return
 
-    set_patches_on_mirror(msf, sfgerrit, name, mirror, sfdistgit,
+    set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
                           workdir)
 
 
