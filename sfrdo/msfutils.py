@@ -19,6 +19,10 @@ import sys
 import shlex
 import subprocess
 
+import requests
+
+from pysflib.sfauth import get_cookie
+
 
 class SFManagerException(Exception):
     pass
@@ -79,3 +83,29 @@ class ManageSfUtils(Tool):
         out, code = self.exe(cmd)
         if code:
             raise SFManagerException(out)
+
+
+def get_github_user_by_mail(email):
+    """Retrieves user info from Github from an email address"""
+    endpoint = "https://api.github.com/search/users?q=%s+in%%3Aemail"
+    user_info = requests.get(endpoint % email).json()['items']
+    if not user_info:
+        raise Exception("No user found")
+    user_info = user_info[0]
+    login = user_info['login']
+    full_name = login
+    # fech ssh keys
+    endpoint = "https://api.github.com/users/%s/keys"
+    keys = requests.get(endpoint % login).json()
+    ssh_keys = [{"key": s["key"]} for s in keys]
+    return {"username": login,
+            "email": email,
+            "full_name": full_name,
+            "ssh_keys": ssh_keys}
+
+
+def provision_user(sf_url, username, password, user_data):
+    auth_cookie = {'auth_pubtkt': get_cookie(sf_url, username, password)}
+    return requests.post('http://' + sf_url + "/manage/services_users/",
+                         json=user_data,
+                         cookies=auth_cookie)
