@@ -51,6 +51,10 @@ class BranchNotFoundException(Exception):
     pass
 
 
+class RequestedTagDoesNotExists(Exception):
+    pass
+
+
 def fetch_rdoinfo():
     if not os.path.isdir(config.userdir):
         os.mkdir(config.userdir)
@@ -225,11 +229,20 @@ def import_mirror(msf, sfgerrit, name, upstream, workdir):
         git('fetch', '--all')
 
         # Assert expected branches exists
-        is_branches_exists([('upstream', 'stable/liberty')])
+        skip = False
+        try:
+            is_branches_exists([('upstream', 'stable/liberty')])
+        except BranchNotFoundException, e:
+            msg = "(%s) does not have a stable/liberty branch." % name + \
+                  " Skip the sync."
+            logging.warning(msg)
+            print msg
+            skip = True
 
         # sync and push to rpmfactory
         sync_and_push_branch('upstream', 'gerrit', 'master')
-        sync_and_push_branch('upstream', 'gerrit', 'stable/liberty')
+        if not skip:
+            sync_and_push_branch('upstream', 'gerrit', 'stable/liberty')
         git('push', 'gerrit', '--tags')
 
 
@@ -247,7 +260,10 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
         print "%s packaging is based on tag %s" % (sfdistgit, version)
     with cdir(os.path.join(workdir, name)):
         print "Create %s based on tag %s" % ('liberty-patches', version)
-        git('checkout', version)
+        try:
+            git('checkout', version)
+        except:
+            raise RequestedTagDoesNotExists("%s is missing" % version)
         git('checkout', '-B', 'liberty-patches')
         git('push', '-f', 'gerrit', 'liberty-patches')
 
@@ -292,9 +308,10 @@ def project_import(cmdargs, workdir, rdoinfo):
                            conf, workdir)
         except BranchNotFoundException, e:
             msg = "(%s) Unable to find a specific branch to import" % name + \
-                "distgit: %s" % e
+                " distgit: %s" % e
             logging.warning(msg)
             print msg
+            delete_project(name)
             return
         try:
             import_mirror(msf, sfgerrit, name, upstream, workdir)
@@ -303,10 +320,15 @@ def project_import(cmdargs, workdir, rdoinfo):
                 " the mirror repo: %s" % e
             logging.warning(msg)
             print msg
+            delete_project(name)
             return
 
-    set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
-                          workdir)
+    try:
+        set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
+                              workdir)
+    except RequestedTagDoesNotExists, e:
+        print "Import error: %s" % e
+        delete_project(name)
 
 
 def project_create(cmdargs, workdir, rdoinfo):
@@ -375,12 +397,16 @@ def projects_status(cmdargs, workdir, rdoinfo):
     print
 
     if cmdargs.clean:
-        msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
-                                     'admin', config.adminpass)
         for p in inconsistent:
-            print "Delete %s (%s, %s)" % (p, p, p + '-distgit')
-            msf.deleteProject(p)
-            msf.deleteProject(p + '-distgit')
+            delete_project(p)
+
+
+def delete_project(p):
+    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                 'admin', config.adminpass)
+    print "Delete %s (%s, %s)" % (p, p, p + '-distgit')
+    msf.deleteProject(p)
+    msf.deleteProject(p + '-distgit')
 
 
 def check_project_status(sfprojects, name):
