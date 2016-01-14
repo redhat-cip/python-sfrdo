@@ -349,6 +349,54 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
                                        "ptl-group core-group")
 
 
+def projects_status(cmdargs, workdir, rdoinfo):
+    projects = fetch_all_project_type(rdoinfo, cmdargs.type)
+    print "rdoinfo reports %s %s projects" % (len(projects), cmdargs.type)
+    print "%s project list: %s" % (cmdargs.type, ", ".join(projects))
+
+    r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
+    sfprojects = json.loads(r.text[4:])
+
+    status = {}
+    for project in projects:
+        status[project] = check_project_status(sfprojects, project)
+
+    print
+
+    imported = [p for p, s in status.items() if s == 2]
+    print "Imported: %s : %s" % (len(imported), ", ".join(imported))
+    inconsistent = [p for p, s in status.items() if s == 1]
+    print "Inconsistent: %s : %s" % (
+        len(inconsistent), ", ".join(inconsistent))
+    notimported = [p for p, s in status.items() if s == 0]
+    print "Not imported: %s : %s" % (
+        len(notimported), ", ".join(notimported))
+
+    print
+
+    if cmdargs.clean:
+        msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                     'admin', config.adminpass)
+        for p in inconsistent:
+            print "Delete %s (%s, %s)" % (p, p, p + '-distgit')
+            msf.deleteProject(p)
+            msf.deleteProject(p + '-distgit')
+
+
+def check_project_status(sfprojects, name):
+
+    sfdistgit = name + '-distgit'
+
+    status = 2  # imported
+    if not set([name, sfdistgit]).issubset(set(sfprojects)):
+        status = 1  # inconsistent
+
+    if name not in sfprojects and sfdistgit not in sfprojects:
+        status = 0  # not imported
+
+    return status
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -385,6 +433,16 @@ def main():
     parser_sync_maintainer.add_argument(
         'name', type=str, help='upstream project name')
 
+    parser_status = subparsers.add_parser(
+        'status',
+        help='Status imported project')
+    parser_status.add_argument(
+        '--type', type=str, default=None,
+        help='Limit status to projects of type (core, client, lib)')
+    parser_status.add_argument(
+        '--clean', action='store_true', default=None,
+        help='Clean partially imported projects')
+
     args = parser.parse_args()
     rdoinfo = fetch_rdoinfo()
     if not args.workdir:
@@ -412,3 +470,8 @@ def main():
         project_create(**kargs)
     elif args.command == 'sync_maints':
         project_sync_maints(**kargs)
+    elif args.command == 'status':
+        if not args.type:
+            print "Provide the --type options"
+            sys.exit(1)
+        projects_status(**kargs)
