@@ -44,6 +44,7 @@ BL = ['aodh',  # clone on SF fails ... !
       'openstacksdk',  # distgit project not found on pkg.fedoraproject.org
       'dracclient',  # distgit project not found on pkg.fedoraproject.org
       'mistralclient',  # distgit project not found on pkg.fedoraproject.org
+      'django_openstack_auth',  # distgit project not found on pkg.fedo...
       ]
 
 
@@ -335,40 +336,51 @@ def project_create(cmdargs, workdir, rdoinfo):
     pass
 
 
+def add_to_project_groups(name, maintainer):
+    print "Add %s to project groups for %s" % (maintainer, name)
+    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                 'admin', config.adminpass)
+    msf.addUsertoProjectGroups(name,
+                               maintainer,
+                               "ptl-group core-group")
+    msf.addUsertoProjectGroups(name + '-distgit',
+                               maintainer,
+                               "ptl-group core-group")
+
+
 def project_sync_maints(cmdargs, workdir, rdoinfo):
     (name, distgit, upstream,
      sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
                                                               cmdargs.name)
+
+    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                 'admin', config.adminpass)
+    users = msf.listRegisteredUsers()
+    users = json.loads(users)
     for maintainer in maints:
-        try:
-            msg = "Looking up %s on Github... " % maintainer
-            print msg
-            user_info = msfutils.get_github_user_by_mail(maintainer)
-            print "Found user %s" % user_info['username']
-        except Exception as e:
-            username = maintainer.split('@')[0]
-            msg = "Could not find user, login will default to %s" % username
-            print msg
-            print "(Reason: %s)" % e.message
-            user_info = {"username": username,
-                         "email": maintainer,
-                         "full_name": username,
-                         "ssh_keys": []}
-        r = msfutils.provision_user(config.rpmfactory,
-                                    'admin', config.adminpass,
-                                    user_info)
-        if r.status_code > 399:
-            print "Could not register user in rpmfactory :("
+        if maintainer in [user[1] for user in users]:
+            print "%s already registered" % maintainer
         else:
-            print "User registered in rpmfactory"
-            msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
-                                         'admin', config.adminpass)
-            msf.addUsertoProjectGroups(cmdargs.name,
-                                       maintainer,
-                                       "ptl-group core-group")
-            msf.addUsertoProjectGroups(cmdargs.name + '-distgit',
-                                       maintainer,
-                                       "ptl-group core-group")
+            msg = "Not registered so looking up %s on Github to " + \
+                  "discover usermae and some other details ... " % maintainer
+            print msg
+            try:
+                user_info = msfutils.get_github_user_by_mail(maintainer)
+                print "Found user %s" % user_info['username']
+            except Exception as e:
+                msg = "Could not find user."
+                print "%s (Reason: %s)" % (msg, e.message)
+                print "Skip %s pre-registration" % maintainer
+                continue
+            r = msfutils.provision_user(config.rpmfactory,
+                                        'admin', config.adminpass,
+                                        user_info)
+            if r.status_code > 399:
+                print "Could not pre-register user in rpmfactory :("
+            else:
+                print "User registered in rpmfactory"
+
+        add_to_project_groups(name, maintainer)
 
 
 def projects_status(cmdargs, workdir, rdoinfo):
@@ -457,7 +469,7 @@ def main():
         'sync_maints',
         help='Sync PTL/CORE group with maintainers (rdoinfo)')
     parser_sync_maintainer.add_argument(
-        'name', type=str, help='upstream project name')
+        '--name', type=str, help='upstream project name')
 
     parser_status = subparsers.add_parser(
         'status',
@@ -492,6 +504,7 @@ def main():
             kargs['cmdargs'].name = project
             display_details(**kargs)
             project_import(**kargs)
+            project_sync_maints(**kargs)
     elif args.command == 'create':
         project_create(**kargs)
     elif args.command == 'sync_maints':

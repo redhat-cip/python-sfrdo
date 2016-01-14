@@ -84,6 +84,13 @@ class ManageSfUtils(Tool):
         if code:
             raise SFManagerException(out)
 
+    def listRegisteredUsers(self):
+        cmd = self.base_cmd + " membership list"
+        out, code = self.exe(cmd)
+        if code:
+            raise SFManagerException(out)
+        return out
+
 
 def get_github_user_by_mail(email):
     """Retrieves user info from Github from an email address"""
