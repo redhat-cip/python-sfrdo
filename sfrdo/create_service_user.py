@@ -10,4 +10,4 @@ from sfrdo import config
 #  'Bender RPM Factory' --ssh-key /var/lib/jenkins/.ssh/id_rsa.pub
 
 auth_cookie = {'auth_pubtkt': get_cookie(config.rpmfactory,
-                                         'sfbender', 'userpass')}
+                                         'sfrdobender', 'userpass')}

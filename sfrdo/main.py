@@ -35,6 +35,12 @@ from sfrdo import msfutils
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
+# TODO(fbo): Add an option to update the distgit repo based on upstream
+# TODO(fbo): Add an option to fired the periodic job to fetch lasts changes on mirror repos
+# TODO(fbo): Add an option to add config jobs for earch project 
+# TODO(fbo): Sync maintainers option needs to clean previously added maintainers in groups
+
+
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
       'cloudkittyclient',  # distgit project not found on pkg.fedoraproject.org
@@ -311,7 +317,7 @@ def project_import(cmdargs, workdir, rdoinfo):
             logging.warning(msg)
             print msg
             delete_project(name)
-            return
+            return False
         try:
             import_mirror(msf, sfgerrit, name, upstream, workdir)
         except BranchNotFoundException, e:
@@ -320,7 +326,7 @@ def project_import(cmdargs, workdir, rdoinfo):
             logging.warning(msg)
             print msg
             delete_project(name)
-            return
+            return False
 
     try:
         set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
@@ -328,6 +334,9 @@ def project_import(cmdargs, workdir, rdoinfo):
     except RequestedTagDoesNotExists, e:
         print "Import error: %s" % e
         delete_project(name)
+        return False
+
+    return True
 
 
 def project_create(cmdargs, workdir, rdoinfo):
@@ -347,7 +356,7 @@ def add_to_project_groups(name, maintainer):
 
 
 def project_sync_maints(cmdargs, workdir, rdoinfo):
-    print "=== Sync maintainer in project groups + service user ==="
+    print "\n=== Sync maintainer in project %s groups + service user ===" % cmdargs.name
     (name, distgit, upstream,
      sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
                                                               cmdargs.name)
@@ -357,15 +366,16 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
     users = msf.listRegisteredUsers()
     users = json.loads(users)
     for maintainer in maints:
+        print "\nAttempt to add maintainer %s" % maintainer
         if maintainer in [user[1] for user in users]:
-            print "%s already registered" % maintainer
+            pass
         else:
-            msg = "Not registered so looking up %s on " % maintainer + \
-                  "Github to discover username and some other details ... "
+            msg = "Not registered on SF so looking up on Github"
             print msg
             try:
                 user_info = msfutils.get_github_user_by_mail(maintainer)
-                print "Found user %s" % user_info['username']
+                print "Found user %s detail (username, ...)" % user_info['username']
+                print "Do %s pre-registration" % maintainer
             except Exception as e:
                 msg = "Could not find user."
                 print "%s (Reason: %s)" % (msg, e.message)
@@ -382,14 +392,11 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
         add_to_project_groups(name, maintainer)
 
     # Add a service user to the project group
+    print
     add_to_project_groups(name, config.service_user)
 
 
-def projects_status(cmdargs, workdir, rdoinfo):
-    projects = fetch_all_project_type(rdoinfo, cmdargs.type)
-    print "rdoinfo reports %s %s projects" % (len(projects), cmdargs.type)
-    print "%s project list: %s" % (cmdargs.type, ", ".join(projects))
-
+def get_project_status(projects, typ):
     r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
     sfprojects = json.loads(r.text[4:])
 
@@ -397,14 +404,22 @@ def projects_status(cmdargs, workdir, rdoinfo):
     for project in projects:
         status[project] = check_project_status(sfprojects, project)
 
+    return [p for p, s in status.items() if s == typ]
+
+
+def projects_status(cmdargs, workdir, rdoinfo):
+    projects = fetch_all_project_type(rdoinfo, cmdargs.type)
+    print "rdoinfo reports %s %s projects" % (len(projects), cmdargs.type)
+    print "%s project list: %s" % (cmdargs.type, ", ".join(projects))
+
     print
 
-    imported = [p for p, s in status.items() if s == 2]
+    imported = get_project_status(projects, 2)
     print "Imported: %s : %s" % (len(imported), ", ".join(imported))
-    inconsistent = [p for p, s in status.items() if s == 1]
+    inconsistent = get_project_status(projects, 1)
     print "Inconsistent: %s : %s" % (
         len(inconsistent), ", ".join(inconsistent))
-    notimported = [p for p, s in status.items() if s == 0]
+    notimported = get_project_status(projects, 0)
     print "Not imported: %s : %s" % (
         len(notimported), ", ".join(notimported))
 
@@ -472,6 +487,9 @@ def main():
         help='Sync PTL/CORE group with maintainers (rdoinfo)')
     parser_sync_maintainer.add_argument(
         '--name', type=str, help='upstream project name')
+    parser_sync_maintainer.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to imported projects of type (core, client, lib)')
 
     parser_status = subparsers.add_parser(
         'status',
@@ -505,12 +523,21 @@ def main():
                 continue
             kargs['cmdargs'].name = project
             display_details(**kargs)
-            project_import(**kargs)
-            project_sync_maints(**kargs)
+            status = project_import(**kargs)
+            if status:
+                project_sync_maints(**kargs)
     elif args.command == 'create':
         project_create(**kargs)
     elif args.command == 'sync_maints':
-        project_sync_maints(**kargs)
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        print "Sync maints on projects : %s" % ", ".join(projects)
+        for project in projects:
+            kargs['cmdargs'].name = project
+            project_sync_maints(**kargs)
     elif args.command == 'status':
         if not args.type:
             print "Provide the --type options"
