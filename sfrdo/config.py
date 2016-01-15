@@ -22,6 +22,7 @@ rdoinfo = 'https://github.com/redhat-openstack/rdoinfo.git'
 
 rpmfactory = 'rpmfactory.beta.rdoproject.org'
 gerrit_rpmfactory = 'ssh://%%s@%s:29418/' % rpmfactory
+service_user = 'dev-robot@rpmfactory.beta.rdoproject.org'
 
 userlogin = 'fbo'
 useremail = 'fboucher@redhat.com'

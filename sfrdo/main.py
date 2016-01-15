@@ -35,9 +35,7 @@ from sfrdo import msfutils
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
-BL = ['aodh',  # clone on SF fails ... !
-      'app-catalog-ui',  # same as aodh :/
-      'instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
+BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
       'cloudkittyclient',  # distgit project not found on pkg.fedoraproject.org
       'tripleoclient',  # distgit project not found on pkg.fedoraproject.org
@@ -349,6 +347,7 @@ def add_to_project_groups(name, maintainer):
 
 
 def project_sync_maints(cmdargs, workdir, rdoinfo):
+    print "=== Sync maintainer in project groups + service user ==="
     (name, distgit, upstream,
      sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
                                                               cmdargs.name)
@@ -361,8 +360,8 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
         if maintainer in [user[1] for user in users]:
             print "%s already registered" % maintainer
         else:
-            msg = "Not registered so looking up %s on Github to " + \
-                  "discover usermae and some other details ... " % maintainer
+            msg = "Not registered so looking up %s on " % maintainer + \
+                  "Github to discover username and some other details ... "
             print msg
             try:
                 user_info = msfutils.get_github_user_by_mail(maintainer)
@@ -381,6 +380,9 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
                 print "User registered in rpmfactory"
 
         add_to_project_groups(name, maintainer)
+    
+    # Add a service user to the project group
+    add_to_project_groups(name, config.service_user)
 
 
 def projects_status(cmdargs, workdir, rdoinfo):
