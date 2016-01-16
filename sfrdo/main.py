@@ -36,9 +36,9 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
 # TODO(fbo): Add an option to update the distgit repo based on upstream
-# TODO(fbo): Add an option to fired the periodic job to fetch lasts changes on mirror repos
-# TODO(fbo): Add an option to add config jobs for earch project 
-# TODO(fbo): Sync maintainers option needs to clean previously added maintainers in groups
+# TODO(fbo): Add an option to fired the periodic job to fetch lasts changes
+# on mirror repos
+# TODO(fbo): Add an option to add config jobs for earch project
 
 
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
@@ -356,7 +356,8 @@ def add_to_project_groups(name, maintainer):
 
 
 def project_sync_maints(cmdargs, workdir, rdoinfo):
-    print "\n=== Sync maintainer in project %s groups + service user ===" % cmdargs.name
+    print "\n=== Sync maintainer in project " + \
+          "%s groups + service user ===" % cmdargs.name
     (name, distgit, upstream,
      sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
                                                               cmdargs.name)
@@ -365,6 +366,22 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
                                  'admin', config.adminpass)
     users = msf.listRegisteredUsers()
     users = json.loads(users)
+
+    infos = msf.listAllProjectDetails()
+    memberships = fetch_project_members(infos, name)
+
+    # Clean actual members
+    print "\nAttempt to clean existing members in %s" % name
+    for project_mbs in memberships:
+        for mb in memberships[project_mbs][0]:  # ptl
+            if mb == 'admin@rpmfactory.beta.rdoproject.org':
+                continue
+            msf.deleteUserToProjectGroup(project_mbs, mb, 'ptl-group')
+        for mb in memberships[project_mbs][1]:  # core
+            if mb == 'admin@rpmfactory.beta.rdoproject.org':
+                continue
+            msf.deleteUserToProjectGroup(project_mbs, mb, 'core-group')
+
     for maintainer in maints:
         print "\nAttempt to add maintainer %s" % maintainer
         if maintainer in [user[1] for user in users]:
@@ -374,7 +391,8 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
             print msg
             try:
                 user_info = msfutils.get_github_user_by_mail(maintainer)
-                print "Found user %s detail (username, ...)" % user_info['username']
+                print "Found user %s detail (username, ...)" % \
+                    user_info['username']
                 print "Do %s pre-registration" % maintainer
             except Exception as e:
                 msg = "Could not find user."
@@ -452,6 +470,26 @@ def check_project_status(sfprojects, name):
     return status
 
 
+def fetch_project_members(infos, name):
+    sfdistgit = name + '-distgit'
+    ret = {}
+    for p in (name, sfdistgit):
+        groups = infos[p]['groups']
+        ret[p] = []
+        ret[p].append([m['email'] for m in groups['ptl']['members']])
+        ret[p].append([m['email'] for m in groups['core']['members']])
+    return ret
+
+
+def project_members(cmdargs, workdir, rdoinfo):
+    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                 'admin', config.adminpass)
+    name = cmdargs.name
+    infos = msf.listAllProjectDetails()
+    ret = fetch_project_members(infos, name)
+    print ret
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -501,6 +539,16 @@ def main():
         '--clean', action='store_true', default=None,
         help='Clean partially imported projects')
 
+    subparsers.add_parser(
+        'ghuser',
+        help='Find username based on Github')
+
+    parser_project_members = subparsers.add_parser(
+        'project_members',
+        help='Display project memberships')
+    parser_project_members.add_argument(
+        '--name', type=str, help='project name')
+
     args = parser.parse_args()
     rdoinfo = fetch_rdoinfo()
     if not args.workdir:
@@ -543,3 +591,27 @@ def main():
             print "Provide the --type options"
             sys.exit(1)
         projects_status(**kargs)
+    elif args.command == 'ghuser':
+        import time
+        projects = fetch_all_project_type(rdoinfo, 'core')
+        projects.extend(fetch_all_project_type(rdoinfo, 'client'))
+        projects.extend(fetch_all_project_type(rdoinfo, 'core'))
+        maints = {}
+        for p in projects:
+            maintainers = fetch_project_infos(rdoinfo, p)[4]
+            for m in maintainers:
+                maints[m] = None
+        for m in maints.keys():
+            time.sleep(15)
+            print "\n---> Looking for %s" % m
+            try:
+                user_info = msfutils.get_github_user_by_mail(m)
+                print "Found user %s detail (username, ...)" % user_info
+                maints[m] = user_info
+            except Exception as e:
+                msg = "Could not find user."
+                print "%s (Reason: %s)" % (msg, e.message)
+
+        print maints
+    elif args.command == 'project_members':
+        project_members(**kargs)

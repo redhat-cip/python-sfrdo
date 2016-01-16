@@ -58,6 +58,9 @@ class Tool:
 class ManageSfUtils(Tool):
     def __init__(self, url, user, passwd):
         Tool.__init__(self)
+        self.url = url
+        self.user = user
+        self.passwd = passwd
         self.base_cmd = "sfmanager --url %s " \
             "--auth %s:%s " % (url, user, passwd)
 
@@ -84,6 +87,13 @@ class ManageSfUtils(Tool):
         if code:
             raise SFManagerException(out)
 
+    def deleteUserToProjectGroup(self, project, email, group):
+        cmd = self.base_cmd + " membership remove --project %s " % project
+        cmd = cmd + " --user %s --group %s" % (email, group)
+        out, code = self.exe(cmd)
+        if code:
+            raise SFManagerException(out)
+
     def listRegisteredUsers(self):
         cmd = self.base_cmd + " membership list"
         out, code = self.exe(cmd)
@@ -91,11 +101,19 @@ class ManageSfUtils(Tool):
             raise SFManagerException(out)
         return out
 
+    def listAllProjectDetails(self):
+        auth_cookie = {'auth_pubtkt': get_cookie(self.url.lstrip('http://'),
+                                                 self.user, self.passwd)}
+        return requests.get(self.url + "/manage/project/",
+                            cookies=auth_cookie).json()
+
 
 def get_github_user_by_mail(email):
     """Retrieves user info from Github from an email address"""
     endpoint = "https://api.github.com/search/users?q=%s+in%%3Aemail"
-    user_info = requests.get(endpoint % email).json()['items']
+    user_info = requests.get(endpoint % email).json()
+    print user_info
+    user_info = user_info['items']
     if not user_info:
         raise Exception("No user found")
     user_info = user_info[0]
