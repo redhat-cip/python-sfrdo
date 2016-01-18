@@ -18,6 +18,7 @@ import os
 import sys
 import imp
 import json
+import shutil
 import logging
 import requests
 import urlparse
@@ -280,7 +281,8 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
             git('review', '-i', '-y', 'liberty-patches')
 
 
-def check_upstream_and_sync(local, branch, upstream, rbranch=None):
+def check_upstream_and_sync(sfdistgit, workdir, local, branch,
+                            upstream, rbranch=None):
     if not rbranch:
         rbranch = branch
     print "Attempt to sync %s:%s from %s:%s" % (local, branch,
@@ -291,10 +293,23 @@ def check_upstream_and_sync(local, branch, upstream, rbranch=None):
            if l.endswith('refs/heads/%s' % branch)][0]
 
     if l_ref == u_ref:
-        print "Distgit is up to date. Continue."
+        print "Distgit is up to date. Nothing to do."
     else:
         print "Need a sync [l:%s != u:%s]" % (l_ref, u_ref)
-        print "Not implemented."
+        pdir = os.path.join(workdir, sfdistgit)
+        # Clean previous if exist
+        if os.path.isdir(pdir):
+            shutil.rmtree(pdir)
+        with cdir(workdir):
+            git('clone', 'http://%s/r/%s' % (config.rpmfactory, sfdistgit),
+                sfdistgit)
+        with cdir(pdir):
+            # Set remotes and fetch objects
+            git('remote', 'add', 'local', local)
+            git('remote', 'add', 'upstream', upstream)
+            git('fetch', '--all')
+            sync_and_push_branch('upstream', 'local',
+                                 rbranch, branch)
 
 
 def project_import(cmdargs, workdir, rdoinfo):
@@ -317,10 +332,15 @@ def project_import(cmdargs, workdir, rdoinfo):
         # The project exist
         if create == False:
             if conf == 'core':
-                check_upstream_and_sync(sfgerrit + sfdistgit, 'rdo-liberty', distgit)
+                rbranch=None
             if conf == 'client':
-                check_upstream_and_sync(sfgerrit + sfdistgit, 'rdo-liberty', distgit, 'master')
-            check_upstream_and_sync(sfgerrit + sfdistgit, 'master', mdistgit, 'rpm-master')
+                rbranch='master'
+            check_upstream_and_sync(sfdistgit, workdir,
+                                    sfgerrit + sfdistgit,
+                                    'rdo-liberty', distgit, rbranch)
+            check_upstream_and_sync(sfdistgit, workdir,
+                                    sfgerrit + sfdistgit,
+                                    'master', mdistgit, 'rpm-master')
             return True
         print "Project has not been imported yet."
         return False
