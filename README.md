@@ -4,9 +4,34 @@ python-sfrdo
 Hacking
 -------
 
-```
-. ../sfrdo-venv/bin/activate
+```python
 virtualenv ../sfrdo-venv
+. ../sfrdo-venv/bin/activate
 pip install -r requirements.txt
 python setup.py develop
+```
+
+Help
+----
+
+```bash
+sfrdo --help
+usage: sfrdo [-h] [--workdir WORKDIR]
+             {import,create,sync_maints,status,ghuser,project_members,infos}
+             ...
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --workdir WORKDIR     helper option
+
+commands:
+  {import,create,sync_maints,status,ghuser,project_members,infos}
+                        Available commands help
+    import              Import an existing RDO project (need admin creds)
+    create              Create a new project template (need admin creds)
+    sync_maints         Sync PTL/CORE group with maintainers (rdoinfo)
+    status              Status imported project
+    ghuser              Find username based on Github
+    project_members     Display project memberships
+    infos               Display infos from rdoinfo for a project
 ```
