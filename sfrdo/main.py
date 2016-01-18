@@ -35,7 +35,6 @@ from sfrdo import msfutils
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
-# TODO(fbo): Add an option to update the distgit repo based on upstream
 # TODO(fbo): Add an option to fired the periodic job to fetch lasts changes
 # on mirror repos
 # TODO(fbo): Add an option to add config jobs for earch project
@@ -281,11 +280,30 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
             git('review', '-i', '-y', 'liberty-patches')
 
 
+def check_upstream_and_sync(local, branch, upstream, rbranch=None):
+    if not rbranch:
+        rbranch = branch
+    print "Attempt to sync %s:%s from %s:%s" % (local, branch,
+                                                upstream, rbranch) 
+    u_ref = [l.split()[0] for l in git('ls-remote', upstream).split('\n')
+           if l.endswith('refs/heads/%s' % rbranch)][0]
+    l_ref = [l.split()[0] for l in git('ls-remote', local).split('\n')
+           if l.endswith('refs/heads/%s' % branch)][0]
+
+    if l_ref == u_ref:
+        print "Distgit is up to date. Continue."
+    else:
+        print "Need a sync [l:%s != u:%s]" % (l_ref, u_ref)
+        print "Not implemented."
+
+
 def project_import(cmdargs, workdir, rdoinfo):
     print "\n=== Start import ==="
     name, distgit, upstream, \
         sfdistgit, maints, conf, mdistgit = \
         fetch_project_infos(rdoinfo, cmdargs.name)
+
+    sfgerrit = config.gerrit_rpmfactory % config.userlogin
 
     r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
     projects = json.loads(r.text[4:])
@@ -293,6 +311,19 @@ def project_import(cmdargs, workdir, rdoinfo):
     create = True
     if set([name, sfdistgit]).issubset(set(projects)):
         create = False
+
+    # Refresh rdo-liberty and rpm-master
+    if cmdargs.refresh_distgit:
+        # The project exist
+        if create == False:
+            if conf == 'core':
+                check_upstream_and_sync(sfgerrit + sfdistgit, 'rdo-liberty', distgit)
+            if conf == 'client':
+                check_upstream_and_sync(sfgerrit + sfdistgit, 'rdo-liberty', distgit, 'master')
+            check_upstream_and_sync(sfgerrit + sfdistgit, 'master', mdistgit, 'rpm-master')
+            return True
+        print "Project has not been imported yet."
+        return False
 
     if not cmdargs.force and not create:
         print "Project %s and %s already exists" % (name, sfdistgit)
@@ -304,29 +335,27 @@ def project_import(cmdargs, workdir, rdoinfo):
     print "Workdir is: %s" % workdir
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
-    sfgerrit = config.gerrit_rpmfactory % config.userlogin
 
-    if not cmdargs.only_patches_branch:
-        try:
-            import_distgit(msf, sfgerrit,
-                           sfdistgit, distgit, mdistgit,
-                           conf, workdir)
-        except BranchNotFoundException, e:
-            msg = "(%s) Unable to find a specific branch to import" % name + \
-                " distgit: %s" % e
-            logging.warning(msg)
-            print msg
-            delete_project(name)
-            return False
-        try:
-            import_mirror(msf, sfgerrit, name, upstream, workdir)
-        except BranchNotFoundException, e:
-            msg = "(%s) Unable to find a specific branch to import" % name + \
-                " the mirror repo: %s" % e
-            logging.warning(msg)
-            print msg
-            delete_project(name)
-            return False
+    try:
+        import_distgit(msf, sfgerrit,
+                       sfdistgit, distgit, mdistgit,
+                       conf, workdir)
+    except BranchNotFoundException, e:
+        msg = "(%s) Unable to find a specific branch to import" % name + \
+            " distgit: %s" % e
+        logging.warning(msg)
+        print msg
+        delete_project(name)
+        return False
+    try:
+        import_mirror(msf, sfgerrit, name, upstream, workdir)
+    except BranchNotFoundException, e:
+        msg = "(%s) Unable to find a specific branch to import" % name + \
+            " the mirror repo: %s" % e
+        logging.warning(msg)
+        print msg
+        delete_project(name)
+        return False
 
     try:
         set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
@@ -507,9 +536,9 @@ def main():
         '--type', type=str, default=None,
         help='Import all project of type (core, client, lib)')
     parser_import.add_argument(
-        '--only-patches-branch',
+        '--refresh-distgit',
         action='store_true', default=False,
-        help='Only act on the patches branch (need a workdir)')
+        help='Sync previously imported disgit repo with upstream')
     parser_import.add_argument('--force',
                                action='store_true', default=False,
                                help='Overwrite a project if already exists')
@@ -549,6 +578,12 @@ def main():
     parser_project_members.add_argument(
         '--name', type=str, help='project name')
 
+    parser_infos = subparsers.add_parser(
+        'infos',
+        help='Display infos from rdoinfo for a project')
+    parser_infos.add_argument(
+        '--name', type=str, help='project name')
+
     args = parser.parse_args()
     rdoinfo = fetch_rdoinfo()
     if not args.workdir:
@@ -572,7 +607,7 @@ def main():
             kargs['cmdargs'].name = project
             display_details(**kargs)
             status = project_import(**kargs)
-            if status:
+            if status and not args.refresh_distgit:
                 project_sync_maints(**kargs)
     elif args.command == 'create':
         project_create(**kargs)
@@ -615,3 +650,5 @@ def main():
         print maints
     elif args.command == 'project_members':
         project_members(**kargs)
+    elif args.command == 'infos':
+        display_details(**kargs)
