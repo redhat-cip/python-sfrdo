@@ -3,3 +3,4 @@ pycrypto==2.6.1
 urllib3==1.11
 rdopkg
 requests[security]
+PyYAML
