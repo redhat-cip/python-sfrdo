@@ -41,8 +41,6 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 # TODO(fbo): Add an option to fired the periodic job to fetch lasts changes
 # on mirror repos
-# TODO(fbo): Move back master-distgit in rpm-master (and no longer master)
-#            Delete the master branch
 
 
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
@@ -53,6 +51,7 @@ BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'dracclient',  # distgit project not found on pkg.fedoraproject.org
       'mistralclient',  # distgit project not found on pkg.fedoraproject.org
       'django_openstack_auth',  # distgit project not found on pkg.fedo...
+      'ironic',  # internal error on Gerrit ...
       ]
 
 
@@ -209,14 +208,17 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
                                 ('upstream-mdistgit', 'rpm-master')])
             sync_and_push_branch('upstream', 'gerrit', 'rdo-liberty')
             sync_and_push_branch('upstream-mdistgit', 'gerrit',
-                                 'rpm-master', 'master')
+                                 'rpm-master')
         elif conf == 'client':
             is_branches_exists([('upstream', 'master'),
                                 ('upstream-mdistgit', 'rpm-master')])
             # Assume master targets liberty atm
             sync_and_push_branch('upstream', 'gerrit', 'master', 'rdo-liberty')
             sync_and_push_branch('upstream-mdistgit', 'gerrit',
-                                 'rpm-master', 'master')
+                                 'rpm-master')
+
+        # Remove master branch (as not needed)
+        # git('push', '-f', 'gerrit', ':master')
 
 
 def import_mirror(msf, sfgerrit, name, upstream, workdir):
@@ -350,7 +352,7 @@ def project_import(cmdargs, workdir, rdoinfo):
                                     'rdo-liberty', distgit, rbranch)
             check_upstream_and_sync(sfdistgit, workdir,
                                     sfgerrit + sfdistgit,
-                                    'master', mdistgit, 'rpm-master')
+                                    'rpm-master', mdistgit)
             return True
         print "Project has not been imported yet."
         return False
@@ -701,6 +703,7 @@ def main():
             status = project_import(**kargs)
             if status and not args.refresh_distgit:
                 project_sync_maints(**kargs)
+                update_config_for_project(**kargs)
     elif args.command == 'create':
         project_create(**kargs)
     elif args.command == 'sync_maints':
