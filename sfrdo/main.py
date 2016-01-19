@@ -18,6 +18,7 @@ import os
 import sys
 import imp
 import json
+import yaml
 import shutil
 import logging
 import requests
@@ -29,6 +30,8 @@ from rdopkg.repoman import RepoManager
 from rdopkg.helpers import cdir
 from rdopkg.utils.cmd import git
 
+from copy import deepcopy
+
 from sfrdo import config
 from sfrdo import msfutils
 
@@ -38,7 +41,8 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 # TODO(fbo): Add an option to fired the periodic job to fetch lasts changes
 # on mirror repos
-# TODO(fbo): Add an option to add config jobs for earch project
+# TODO(fbo): Move back master-distgit in rpm-master (and no longer master)
+#            Delete the master branch
 
 
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
@@ -304,12 +308,18 @@ def check_upstream_and_sync(sfdistgit, workdir, local, branch,
             git('clone', 'http://%s/r/%s' % (config.rpmfactory, sfdistgit),
                 sfdistgit)
         with cdir(pdir):
+            msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                         'admin', config.adminpass)
+            msf.addUsertoProjectGroups(sfdistgit, config.useremail,
+                                       "ptl-group")
             # Set remotes and fetch objects
             git('remote', 'add', 'local', local)
             git('remote', 'add', 'upstream', upstream)
             git('fetch', '--all')
             sync_and_push_branch('upstream', 'local',
                                  rbranch, branch)
+            msf.deleteUserFromProjectGroup(sfdistgit, config.useremail,
+                                           "ptl-group")
 
 
 def project_import(cmdargs, workdir, rdoinfo):
@@ -425,11 +435,11 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
         for mb in memberships[project_mbs][0]:  # ptl
             if mb == 'admin@rpmfactory.beta.rdoproject.org':
                 continue
-            msf.deleteUserToProjectGroup(project_mbs, mb, 'ptl-group')
+            msf.deleteUserFromProjectGroup(project_mbs, mb, 'ptl-group')
         for mb in memberships[project_mbs][1]:  # core
             if mb == 'admin@rpmfactory.beta.rdoproject.org':
                 continue
-            msf.deleteUserToProjectGroup(project_mbs, mb, 'core-group')
+            msf.deleteUserFromProjectGroup(project_mbs, mb, 'core-group')
 
     for maintainer in maints:
         print "\nAttempt to add maintainer %s" % maintainer
@@ -495,6 +505,59 @@ def projects_status(cmdargs, workdir, rdoinfo):
     if cmdargs.clean:
         for p in inconsistent:
             delete_project(p)
+
+
+def update_config_for_project(cmdargs, workdir, rdoinfo):
+    print "\n=== Update jobs to trigger for project %s" % cmdargs.name
+    sfgerrit = config.gerrit_rpmfactory % config.userlogin
+    name = cmdargs.name
+
+    mirror_p_jobs_tmpl = {'periodic': ['upstream-update'],
+                          'name': None,
+                          'check': ['tox-validate']}
+    distgit_p_jobs_tmpl = {'name': None,
+                           'check': ['pkg-validate', 'delorean-ci']}
+
+    pdir = os.path.join(workdir, 'config')
+    # Clean previous if exist
+    if os.path.isdir(pdir):
+        shutil.rmtree(pdir)
+    with cdir(workdir):
+        git('clone', 'http://%s/r/%s' % (config.rpmfactory, 'config'),
+            'config')
+    with cdir(pdir):
+        git('remote', 'add', 'gerrit', sfgerrit + 'config')
+        zuul_projects = yaml.load(
+            file("zuul/projects.yaml").read())
+        for pname in (name, name + '-distgit'):
+            # Clean previous if exists
+            for i, p_def in enumerate(zuul_projects['projects']):
+                if p_def['name'] == pname:
+                    zuul_projects['projects'].pop(i)
+            # Add the config entry
+            if pname.endswith('-distgit'):
+                zuul_projects['projects'].append(
+                    deepcopy(distgit_p_jobs_tmpl))
+            else:
+                zuul_projects['projects'].append(
+                    deepcopy(mirror_p_jobs_tmpl))
+            zuul_projects['projects'][-1]['name'] = pname
+        file("zuul/projects.yaml", "w").write(
+            yaml.safe_dump(zuul_projects, default_flow_style=False))
+        ret = git('ls-files', '-o', '-m', '--exclude-standard')
+        if ret:
+            git('commit', '-a', '--author',
+                '%s <%s>' % (config.userlogin, config.useremail),
+                '-m', 'Config update for %s' % name)
+            git('review', '-i', '-r', 'gerrit', 'master')
+            sha = open(".git/refs/heads/master").read()
+            gu = msfutils.GerritSfUtils(config.rpmfactory,
+                                        config.userlogin)
+            try:
+                gu.approve_and_wait_for_merge(sha)
+            except msfutils.UnableToMergeException, e:
+                print "Config change for %s has not be merged (%s)" % (
+                    name, e)
 
 
 def delete_project(p):
@@ -604,6 +667,15 @@ def main():
     parser_infos.add_argument(
         '--name', type=str, help='project name')
 
+    parser_config = subparsers.add_parser(
+        'config',
+        help='Configure jobs for project')
+    parser_config.add_argument(
+        '--name', type=str, help='project name')
+    parser_config.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to imported projects of type (core, client, lib)')
+
     args = parser.parse_args()
     rdoinfo = fetch_rdoinfo()
     if not args.workdir:
@@ -672,3 +744,13 @@ def main():
         project_members(**kargs)
     elif args.command == 'infos':
         display_details(**kargs)
+    elif args.command == 'config':
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        print "Update jobs to trigger for projects : %s" % ", ".join(projects)
+        for project in projects:
+            kargs['cmdargs'].name = project
+            update_config_for_project(**kargs)

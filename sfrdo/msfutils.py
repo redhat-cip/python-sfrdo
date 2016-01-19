@@ -16,6 +16,8 @@
 
 import os
 import sys
+import json
+import time
 import shlex
 import subprocess
 
@@ -25,6 +27,10 @@ from pysflib.sfauth import get_cookie
 
 
 class SFManagerException(Exception):
+    pass
+
+
+class UnableToMergeException(Exception):
     pass
 
 
@@ -53,6 +59,31 @@ class Tool:
         finally:
             os.chdir(ocwd)
         return output, p.returncode
+
+
+class GerritSfUtils(Tool):
+    def __init__(self, host, user):
+        Tool.__init__(self)
+        self.host = host
+        self.user = user
+        self.cmd = "ssh -l %s -p 29418 %s gerrit " % (self.user, self.host)
+
+    def approve_and_wait_for_merge(self, sha):
+        cmd = self.cmd + "review --code-review +2 --workflow +1 %s" % sha
+        self.exe(cmd)
+        cmd = self.cmd + "query --format JSON --current-patch-set %s" % sha
+        attempts = 0
+        infos = {}
+        infos['status'] = None
+        while infos['status'] != "MERGED":
+            out, _ = self.exe(cmd)
+            infos = json.loads(out.split('\n')[0])
+            print "Waiting to be merged ..."
+            if attempts >= 21:
+                raise UnableToMergeException("Timeout exceeded")
+            time.sleep(3)
+            attempts += 1
+        print "Merged."
 
 
 class ManageSfUtils(Tool):
@@ -87,7 +118,7 @@ class ManageSfUtils(Tool):
         if code:
             raise SFManagerException(out)
 
-    def deleteUserToProjectGroup(self, project, email, group):
+    def deleteUserFromProjectGroup(self, project, email, group):
         cmd = self.base_cmd + " membership remove --project %s " % project
         cmd = cmd + " --user %s --group %s" % (email, group)
         out, code = self.exe(cmd)
