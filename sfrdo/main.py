@@ -51,7 +51,6 @@ BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'dracclient',  # distgit project not found on pkg.fedoraproject.org
       'mistralclient',  # distgit project not found on pkg.fedoraproject.org
       'django_openstack_auth',  # distgit project not found on pkg.fedo...
-      'ironic',  # internal error on Gerrit ...
       ]
 
 

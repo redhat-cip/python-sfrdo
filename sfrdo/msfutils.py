@@ -75,7 +75,7 @@ class GerritSfUtils(Tool):
         attempts = 0
         infos = {}
         infos['status'] = None
-        while infos['status'] != "MERGED":
+        while 'status' in infos and infos['status'] != "MERGED":
             out, _ = self.exe(cmd)
             infos = json.loads(out.split('\n')[0])
             print "Waiting to be merged ..."
