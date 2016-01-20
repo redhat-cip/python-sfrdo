@@ -115,10 +115,16 @@ def display_details(cmdargs, rdoinfo, workdir=None):
     print
 
 
-def fetch_all_project_type(rdoinfo, t):
+def fetch_all_project_type(rdoinfo, t='None'):
     select = [pkg for pkg in rdoinfo['packages']]
-    return [p['project'] for p in select if
-            'conf' in p and p['conf'] == t]
+    if t == 'All':
+        return [p['project'] for p in select]
+    if t == 'None':
+        return [p['project'] for p in select if
+                'conf' not in p]
+    else:
+        return [p['project'] for p in select if
+                'conf' in p and p['conf'] == t]
 
 
 def create_baseproject(msf, name, desc):
@@ -646,7 +652,7 @@ def main():
         'status',
         help='Status imported project')
     parser_status.add_argument(
-        '--type', type=str, default=None,
+        '--type', type=str, default='None',
         help='Limit status to projects of type (core, client, lib)')
     parser_status.add_argument(
         '--clean', action='store_true', default=None,
