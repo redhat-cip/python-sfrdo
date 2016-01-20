@@ -45,14 +45,13 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
-      'cloudkittyclient',  # distgit project not found on pkg.fedoraproject.org
+      # For the project below. Just import rpm-master and mirror. Avoid compute patches
       'tripleoclient',  # distgit project not found on pkg.fedoraproject.org
-      'openstacksdk',  # distgit project not found on pkg.fedoraproject.org
-      'dracclient',  # distgit project not found on pkg.fedoraproject.org
-      'mistralclient',  # distgit project not found on pkg.fedoraproject.org
       'django_openstack_auth',  # distgit project not found on pkg.fedo...
       ]
 
+NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient', 'mistralclient',
+                  'os-win', 'ironic-lib', 'octavia', 'cloudkitty', 'mistral']
 
 class BranchNotFoundException(Exception):
     pass
@@ -188,7 +187,7 @@ def is_branches_exists(expected_remotes_branches):
 
 
 def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
-                   conf, workdir):
+                   conf, workdir, in_liberty=True):
     print "=== Import distgit ==="
     try:
         create_baseproject(msf, sfdistgit,
@@ -203,22 +202,28 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
     with cdir(os.path.join(workdir, sfdistgit)):
         # Set remotes and fetch objects
         git('remote', 'add', 'gerrit', sfgerrit + sfdistgit)
-        git('remote', 'add', 'upstream', distgit)
+        if in_liberty: 
+            git('remote', 'add', 'upstream', distgit)
         git('remote', 'add', 'upstream-mdistgit', mdistgit)
-        git('fetch', '--all')
+        git('fetch', 'gerrit')
+        if in_liberty: 
+            git('fetch', 'upstream')
+        git('fetch', 'upstream-mdistgit')
 
         # Behave correctly according to project type and actual upstream layout
         if conf == 'core':
-            is_branches_exists([('upstream', 'rdo-liberty'),
-                                ('upstream-mdistgit', 'rpm-master')])
-            sync_and_push_branch('upstream', 'gerrit', 'rdo-liberty')
+            if in_liberty:
+                is_branches_exists([('upstream', 'rdo-liberty')])
+                sync_and_push_branch('upstream', 'gerrit', 'rdo-liberty')
+            is_branches_exists([('upstream-mdistgit', 'rpm-master')])
             sync_and_push_branch('upstream-mdistgit', 'gerrit',
                                  'rpm-master')
-        elif conf == 'client':
-            is_branches_exists([('upstream', 'master'),
-                                ('upstream-mdistgit', 'rpm-master')])
-            # Assume master targets liberty atm
-            sync_and_push_branch('upstream', 'gerrit', 'master', 'rdo-liberty')
+        elif conf == 'client' or conf == 'lib':
+            if in_liberty:
+                # Assume master targets liberty atm
+                is_branches_exists([('upstream', 'master')])
+                sync_and_push_branch('upstream', 'gerrit', 'master', 'rdo-liberty')
+            is_branches_exists([('upstream-mdistgit', 'rpm-master')])
             sync_and_push_branch('upstream-mdistgit', 'gerrit',
                                  'rpm-master')
 
@@ -226,7 +231,7 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
         # git('push', '-f', 'gerrit', ':master')
 
 
-def import_mirror(msf, sfgerrit, name, upstream, workdir):
+def import_mirror(msf, sfgerrit, name, upstream, workdir, in_liberty=True):
     print "=== Import mirror ==="
     try:
         create_baseproject(msf, name,
@@ -245,20 +250,18 @@ def import_mirror(msf, sfgerrit, name, upstream, workdir):
         git('fetch', '--all')
 
         # Assert expected branches exists
-        skip = False
-        try:
-            is_branches_exists([('upstream', 'stable/liberty')])
-        except BranchNotFoundException, e:
-            msg = "(%s) does not have a stable/liberty branch." % name + \
-                  " Skip the sync."
-            logging.warning(msg)
-            print msg
-            skip = True
+        if in_liberty:
+            try:
+                is_branches_exists([('upstream', 'stable/liberty')])
+                sync_and_push_branch('upstream', 'gerrit', 'stable/liberty')
+            except BranchNotFoundException, e:
+                msg = "(%s) does not have a stable/liberty branch." % name + \
+                      " Skip the sync."
+                logging.warning(msg)
+                print msg
 
         # sync and push to rpmfactory
         sync_and_push_branch('upstream', 'gerrit', 'master')
-        if not skip:
-            sync_and_push_branch('upstream', 'gerrit', 'stable/liberty')
         git('push', 'gerrit', '--tags')
 
 
@@ -337,6 +340,12 @@ def project_import(cmdargs, workdir, rdoinfo):
 
     sfgerrit = config.gerrit_rpmfactory % config.userlogin
 
+    in_liberty = True
+    if name in NOT_IN_LIBERTY:
+        in_liberty = False
+
+    print "In liberty ?: %s" % in_liberty
+
     r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
     projects = json.loads(r.text[4:])
 
@@ -376,7 +385,7 @@ def project_import(cmdargs, workdir, rdoinfo):
     try:
         import_distgit(msf, sfgerrit,
                        sfdistgit, distgit, mdistgit,
-                       conf, workdir)
+                       conf, workdir, in_liberty=in_liberty)
     except BranchNotFoundException, e:
         msg = "(%s) Unable to find a specific branch to import" % name + \
             " distgit: %s" % e
@@ -385,7 +394,8 @@ def project_import(cmdargs, workdir, rdoinfo):
         delete_project(name)
         return False
     try:
-        import_mirror(msf, sfgerrit, name, upstream, workdir)
+        import_mirror(msf, sfgerrit, name, upstream, workdir,
+                      in_liberty=in_liberty)
     except BranchNotFoundException, e:
         msg = "(%s) Unable to find a specific branch to import" % name + \
             " the mirror repo: %s" % e
@@ -394,13 +404,14 @@ def project_import(cmdargs, workdir, rdoinfo):
         delete_project(name)
         return False
 
-    try:
-        set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
-                              workdir)
-    except RequestedTagDoesNotExists, e:
-        print "Import error: %s" % e
-        delete_project(name)
-        return False
+    if in_liberty:
+        try:
+            set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
+                                  workdir)
+        except RequestedTagDoesNotExists, e:
+            print "Import error: %s" % e
+            delete_project(name)
+            return False
 
     return True
 
@@ -632,6 +643,9 @@ def main():
     parser_import.add_argument('--force',
                                action='store_true', default=False,
                                help='Overwrite a project if already exists')
+    parser_import.add_argument('--from-p',
+                               type=str, default=False,
+                               help='Restart import from "project"')
 
     parser_create = subparsers.add_parser(
         'create',
@@ -696,6 +710,8 @@ def main():
     if args.command == 'import':
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
+            if args.from_p:
+                projects = projects[projects.index(args.from_p):]
         else:
             projects = [args.name]
         print "Import projects : %s" % ", ".join(projects)
