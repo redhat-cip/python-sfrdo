@@ -60,7 +60,8 @@ NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
                   'mistralclient', 'os-win', 'ironic-lib', 'octavia',
                   'cloudkitty', 'mistral', 'osprofiler', 'pysaml2',
                   'networking-arista', 'networking-cisco', 'vmware-nsx',
-                  'networking-mlnx', 'networking-odl', 'app-catalog-ui']
+                  'networking-mlnx', 'networking-odl', 'app-catalog-ui',
+                  'UcsSdk', 'cachetools']
 
 
 RDOINFOS_FIXES = {
