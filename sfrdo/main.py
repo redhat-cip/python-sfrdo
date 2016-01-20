@@ -45,15 +45,74 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
-      # For the project below. Just import rpm-master and mirror
-      'tripleoclient',  # distgit project not found on pkg.fedoraproject.org
-      'django_openstack_auth',  # distgit project not found on pkg.fedo...
+      'tripleoclient',  # upstream last tag is 0.0.10 but spec use 0.0.11
+      # Patches does not apply
+      'horizon',
       ]
 
 
 NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
                   'mistralclient', 'os-win', 'ironic-lib', 'octavia',
                   'cloudkitty', 'mistral']
+
+
+RDOINFOS_FIXES = {
+    'glance_store': {
+        'distgit': 'git://pkgs.fedoraproject.org/python-glance-store.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'swift': {
+        'distgit': 'git://pkgs.fedoraproject.org/openstack-swift.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'horizon': {
+        'distgit': 'git://github.com/openstack-packages/horizon',
+    },
+    'dib-utils': {
+        'distgit': 'git://pkgs.fedoraproject.org/dib-utils.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'tripleo-incubator': {
+        'distgit': 'git://github.com/openstack-packages/tripleo',
+    },
+    'os-apply-config': {
+        'distgit': 'git://pkgs.fedoraproject.org/os-apply-config.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'os-collect-config': {
+        'distgit': 'git://pkgs.fedoraproject.org/os-collect-config.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'os-net-config': {
+        'distgit': 'git://pkgs.fedoraproject.org/os-net-config.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'os-refresh-config': {
+        'distgit': 'git://pkgs.fedoraproject.org/os-refresh-config.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'os-cloud-config': {
+        'distgit': 'git://pkgs.fedoraproject.org/os-cloud-config.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'zaqar': {
+        'distgit': 'git://pkgs.fedoraproject.org/openstack-zaqar.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'ironic-python-agent': {
+        'distgit':
+            'git://pkgs.fedoraproject.org/openstack-ironic-python-agent.git',
+        'conf': 'client',  # Use the client style (master branch)
+    },
+    'django_openstack_auth': {
+        'distgit':
+            'git://pkgs.fedoraproject.org/python-django-openstack-auth.git',
+    },
+    'tripleoclient': {
+        'distgit': 'git://github.com/openstack-packages/python-tripleoclient',
+        'conf': 'core',  # Use the core style rdo-liberty branch)
+    },
+}
 
 
 class BranchNotFoundException(Exception):
@@ -90,13 +149,21 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
     parts = urlparse.urlparse(distgit)
     distgit = urlparse.urlunparse(['git', parts.netloc,
                                    parts.path, '', '', ''])
+    conf = infos['conf']
+
+    if upstream_project_name in RDOINFOS_FIXES:
+        if 'distgit' in RDOINFOS_FIXES[upstream_project_name]:
+            print "Distgit target has been fixed by sfrdo !"
+            distgit = RDOINFOS_FIXES[upstream_project_name]['distgit']
+        if 'conf' in RDOINFOS_FIXES[upstream_project_name]:
+            print "Conf type has been fixed by sfrdo !"
+            conf = RDOINFOS_FIXES[upstream_project_name]['conf']
 
     mdistgit = infos['master-distgit']
     upstream = infos['upstream']
     name = infos['project']
     maints = infos['maintainers']
     sfdistgit = "%s-distgit" % name
-    conf = infos['conf']
     return (name, distgit, upstream,
             sfdistgit, maints, conf, mdistgit)
 
