@@ -39,6 +39,9 @@ from sfrdo import msfutils
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
+# http://softwarefactory-project.io/etherpad/p/rdo_import_status
+
+
 # TODO(fbo): Add an option to fired the periodic job to fetch lasts changes
 # on mirror repos
 
@@ -46,6 +49,8 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
       'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
       'tripleoclient',  # upstream last tag is 0.0.10 but spec use 0.0.11
+      'networking-bigswitch'  # check etherpad (missing tag for liberty)
+      'packstack',  # multiple issue - check etherpad
       # Patches does not apply
       'horizon',
       ]
@@ -53,7 +58,9 @@ BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
 
 NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
                   'mistralclient', 'os-win', 'ironic-lib', 'octavia',
-                  'cloudkitty', 'mistral']
+                  'cloudkitty', 'mistral', 'osprofiler', 'pysaml2',
+                  'networking-arista', 'networking-cisco', 'vmware-nsx',
+                  'networking-mlnx', 'networking-odl', 'app-catalog-ui']
 
 
 RDOINFOS_FIXES = {
@@ -112,6 +119,14 @@ RDOINFOS_FIXES = {
         'distgit': 'git://github.com/openstack-packages/python-tripleoclient',
         'conf': 'core',  # Use the core style rdo-liberty branch)
     },
+    'openstack-puppet-modules': {
+        'distgit':
+            'git://pkgs.fedoraproject.org/openstack-puppet-modules.git',
+    },
+    'networking-arista': {  # Can be reported
+        'distgit':
+            'git://github.com/openstack-packages/python-networking-arista',
+    },
 }
 
 
@@ -149,7 +164,9 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
     parts = urlparse.urlparse(distgit)
     distgit = urlparse.urlunparse(['git', parts.netloc,
                                    parts.path, '', '', ''])
-    conf = infos['conf']
+    conf = 'None'
+    if 'conf' in infos:
+        conf = infos['conf']
 
     if upstream_project_name in RDOINFOS_FIXES:
         if 'distgit' in RDOINFOS_FIXES[upstream_project_name]:
@@ -288,7 +305,7 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
             is_branches_exists([('upstream-mdistgit', 'rpm-master')])
             sync_and_push_branch('upstream-mdistgit', 'gerrit',
                                  'rpm-master')
-        elif conf == 'client' or conf == 'lib':
+        elif conf == 'client' or conf == 'lib' or conf == 'None':
             if in_liberty:
                 # Assume master targets liberty atm
                 is_branches_exists([('upstream', 'master')])
