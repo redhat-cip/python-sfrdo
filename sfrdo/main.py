@@ -219,6 +219,8 @@ def create_baseproject(msf, name, desc):
     msf.deleteProject(name)
     print "Create %s" % name
     opts = {'description': desc}
+    if not name.endswith("-distgit"):
+        opts['readonly'] = True
     msf.createProject(name, opts)
     print "Add %s to core and ptl group for %s" % (
         config.userlogin, name)
