@@ -453,7 +453,7 @@ def project_import(cmdargs, workdir, rdoinfo):
         if create == False:
             if conf == 'core':
                 rbranch = None
-            if conf == 'client':
+            if conf == 'client' or conf == 'lib' or conf == 'None':
                 rbranch = 'master'
             if in_liberty:
                 check_upstream_and_sync(sfdistgit, workdir,
