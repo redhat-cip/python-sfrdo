@@ -46,12 +46,8 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 # on mirror repos
 
 
-BL = ['instack-undercloud',  # upstream 2.1.3 tag (used in spec) does not exits
-      'tripleo-common',  # upstream 0.1 tag does not exists (0.1.0)
-      'tripleoclient',  # upstream last tag is 0.0.10 but spec use 0.0.11
-      'networking-bigswitch'  # check etherpad (missing tag for liberty)
-      'packstack',  # multiple issue - check etherpad
-      # Patches does not apply
+BL = ['tripleoclient',
+      'packstack',
       'horizon',
       ]
 
@@ -136,6 +132,10 @@ class BranchNotFoundException(Exception):
 
 
 class RequestedTagDoesNotExists(Exception):
+    pass
+
+
+class PRequestedTagDoesNotExists(Exception):
     pass
 
 
@@ -371,7 +371,12 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
         try:
             git('checkout', version)
         except:
-            raise RequestedTagDoesNotExists("%s is missing" % version)
+            if not flat_patches:
+                raise RequestedTagDoesNotExists(
+                    "%s is missing. But no patches rely on it" % version)
+            else:
+                raise PRequestedTagDoesNotExists(
+                    "%s is missing. But patches rely on it" % (version))
         git('checkout', '-B', 'liberty-patches')
         git('push', '-f', 'gerrit', 'liberty-patches')
 
@@ -499,7 +504,10 @@ def project_import(cmdargs, workdir, rdoinfo):
             set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
                                   workdir)
         except RequestedTagDoesNotExists, e:
-            print "Import error: %s" % e
+            print "Import warning: %s. liberty-patches not created" % e
+            return False
+        except PRequestedTagDoesNotExists, e:
+            print "Import error: %s. Clean project" % e
             delete_project(name)
             return False
 
