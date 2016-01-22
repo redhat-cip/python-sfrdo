@@ -626,8 +626,7 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
     sfgerrit = config.gerrit_rpmfactory % config.userlogin
     name = cmdargs.name
 
-    mirror_p_jobs_tmpl = {'periodic': ['upstream-update'],
-                          'name': None,
+    mirror_p_jobs_tmpl = {'name': None,
                           'check': ['tox-validate']}
     distgit_p_jobs_tmpl = {'name': None,
                            'check': ['pkg-validate', 'delorean-ci']}
