@@ -539,6 +539,12 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
 
     infos = msf.listAllProjectDetails()
     memberships = fetch_project_members(infos, name)
+    github_usernames = {}
+    if cmdargs.github_usernames:
+        with open(cmdargs.github_usernames, 'r') as f:
+            for l in f.readlines():
+                email, username = l.split(':')
+                github_usernames[email]
 
     # Clean actual members
     print "\nAttempt to clean existing members in %s" % name
@@ -555,12 +561,39 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
     for maintainer in maints:
         print "\nAttempt to add maintainer %s" % maintainer
         if maintainer in [user[1] for user in users]:
-            pass
+            print "%s was found, checking with Github ..." % maintainer
+            rpmf_user = [user for user in users if maintainer == user[1]]
+            rpmf_user = rpmf_user[0]
+            user_info = msfutils.get_github_user_by_username(rpmf_user[0])
+            if user_info.get("email") != maintainer:
+                print "%s not correctly synced with Github" % maintainer
+                print "removing %s from rpmfactory ..." % maintainer
+                msfutils.delete_user(config.rpmfactory, 'admin',
+                                     config.admin_pass, email=maintainer)
+                print "looking for real github account ..."
+                if github_usernames.get(maintainer):
+                    u = github_usernames.get(maintainer)
+                    user_info = msfutils.get_github_user_by_username(u)
+                    r = msfutils.provision_user(config.rpmfactory,
+                                                'admin', config.adminpass,
+                                                user_info)
+                    if r.status_code > 399:
+                        print "Could not pre-register user in rpmfactory :("
+                    else:
+                        print "User registered in rpmfactory"
+                else:
+                    print "%s not found, skipping."
+            else:
+                print "%s correctly synced with Github" % maintainer
         else:
             msg = "Not registered on SF so looking up on Github"
             print msg
             try:
-                user_info = msfutils.get_github_user_by_mail(maintainer)
+                if github_usernames.get(maintainer):
+                    u = github_usernames.get(maintainer)
+                    user_info = msfutils.get_github_user_by_username(u)
+                else:
+                    user_info = msfutils.get_github_user_by_mail(maintainer)
                 print "Found user %s detail (username, ...)" % \
                     user_info['username']
                 print "Do %s pre-registration" % maintainer
@@ -815,6 +848,12 @@ def main():
     parser_sync_maintainer.add_argument(
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
+    parser_sync_maintainer.add_argument(
+        '--github-usernames', type=str, default=None,
+        help=('a file with a list of the github usernames of maintainers '
+              'to sync in the form <email>:<username>. This should match '
+              'the maintainers that could not be found with the '
+              '"ghuser" command.'))
 
     parser_sync_repo = subparsers.add_parser(
         'sync_repo',
