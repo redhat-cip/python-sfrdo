@@ -960,7 +960,6 @@ def main():
             projects = get_project_status(projects, 2)
         else:
             projects = [args.name]
-        projects = projects[8:14]
         print "Refresh %s branches for projects : %s" % (
             kargs['rtype'], ", ".join(projects))
         for project in projects:
