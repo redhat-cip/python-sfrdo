@@ -160,8 +160,41 @@ def get_github_user_by_mail(email):
             "ssh_keys": ssh_keys}
 
 
+def get_github_user_by_username(username):
+    endpoint = "https://api.github.com/users/%s" % username
+    user_info = requests.get(endpoint).json()
+    if username != user_info.get('login'):
+        raise Exception("No user found")
+    email = user_info.get('email')
+    # might not be world readable, might be a problem at provisioning ...
+    if not email:
+        print ("[WARNING] %s has no public email, first login "
+               "after automated provisioning might fail.")
+    full_name = username
+    # fetch ssh keys
+    keys = requests.get(endpoint + "/keys").json()
+    ssh_keys = [{"key": s["key"] for s in keys}]
+    return {"username": username,
+            "email": email,
+            "full_name": full_name,
+            "ssh_keys": ssh_keys}
+
+
 def provision_user(sf_url, username, password, user_data):
     auth_cookie = {'auth_pubtkt': get_cookie(sf_url, username, password)}
     return requests.post('http://' + sf_url + "/manage/services_users/",
                          json=user_data,
                          cookies=auth_cookie)
+
+
+def delete_user(sf_url, login, password, username=None, email=None):
+    auth_cookie = {'auth_pubtkt': get_cookie(sf_url, login, password)}
+    if username:
+        query = '?username=%s' % username
+        requests.delete('http://' + sf_url + "/manage/services_users" + query,
+                        cookies=auth_cookie)
+    # if both are given we'll just be extra cautious and delete two times
+    if email:
+        query = '?email=%s' % email
+        requests.delete('http://' + sf_url + "/manage/services_users" + query,
+                        cookies=auth_cookie)
