@@ -969,6 +969,7 @@ def main():
             if args.distgit:
                 status_name += '-distgit'
             final_status[status_name] = ret
+            sys.stdout.flush()
         print "\n=== Sync summary ==="
         cmd_ret = 0
         for project, bstatus in final_status.items():
