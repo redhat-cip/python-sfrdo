@@ -390,7 +390,7 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
 
 
 def check_upstream_and_sync(name, workdir, local, branch,
-                            upstream, rbranch=None):
+                            upstream, rbranch=None, push_tags=False):
     if not rbranch:
         rbranch = branch
     print "Attempt to sync %s:%s from %s:%s" % (local, branch,
@@ -431,6 +431,8 @@ def check_upstream_and_sync(name, workdir, local, branch,
                     print cmsg
                 sync_and_push_branch('upstream', 'local',
                                      rbranch, branch)
+                if push_tags:
+                    git('push', 'local', '--tags')
         except Exception, e:
             return [1, "Sync failed: %s" % e]
 
@@ -458,27 +460,6 @@ def project_import(cmdargs, workdir, rdoinfo):
     create = True
     if set([name, sfdistgit]).issubset(set(projects)):
         create = False
-
-    # Refresh rdo-liberty and rpm-master
-    if cmdargs.refresh_distgit:
-        if cmdargs.serviceuser:
-            sfgerrit = config.gerrit_rpmfactory % config.service_user_name
-        # The project exist
-        if create == False:
-            if conf == 'core':
-                rbranch = None
-            if conf == 'client' or conf == 'lib' or conf == 'None':
-                rbranch = 'master'
-            if in_liberty:
-                check_upstream_and_sync(sfdistgit, workdir,
-                                        sfgerrit + sfdistgit,
-                                        'rdo-liberty', distgit, rbranch)
-            check_upstream_and_sync(sfdistgit, workdir,
-                                    sfgerrit + sfdistgit,
-                                    'rpm-master', mdistgit)
-            return True
-        print "Project has not been imported yet."
-        return False
 
     if not cmdargs.force and not create:
         print "Project %s and %s already exists" % (name, sfdistgit)
@@ -596,7 +577,10 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
             else:
                 print "User registered in rpmfactory"
 
-        add_to_project_groups(name, maintainer)
+        try:
+            add_to_project_groups(name, maintainer)
+        except msfutils.SFManagerException, e:
+            print "Failed to add user in groups : %s" % e
 
     # Add a service user to the project group
     print
@@ -690,34 +674,63 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
                     name, e)
 
 
-def refresh_mirror_for_project(cmdargs, workdir, rdoinfo):
-    print "\n=== Refresh mirror for project %s" % cmdargs.name
-
+def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     (name, distgit, upstream,
      sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
                                                               cmdargs.name)
+    if rtype == 'distgit':
+        name = sfdistgit
+
+    print "\n=== Refresh %s branches for project %s" % (rtype, name)
 
     if cmdargs.user:
         sfgerrit = config.gerrit_rpmfactory % config.userlogin
     else:
         sfgerrit = config.gerrit_rpmfactory % config.service_user_name
 
-    name = cmdargs.name
     local = sfgerrit + name
 
-    branches = ('master', 'stable/liberty')
-    local_branches = [l.split()[1] for l in git('ls-remote', local).split('\n')
-                      if l.find('refs/heads/') > 0]
+    in_liberty = True
+    if name in NOT_IN_LIBERTY:
+        in_liberty = False
+
+    push_tags = False
+
+    if rtype == 'mirror':
+        push_tags = True
+        branches = ((upstream, 'master', 'master'),
+                    (upstream, 'stable/liberty', 'stable/liberty'))
+        local_branches = [l.split()[1] for
+                          l in git('ls-remote', local).split('\n')
+                          if l.find('refs/heads/') > 0]
+    elif rtype == 'distgit':
+        if conf == 'core':
+            rbranch = 'rdo-liberty'
+        if conf == 'client' or conf == 'lib' or conf == 'None':
+            rbranch = 'master'
+
+        branches = [(distgit, 'rdo-liberty', rbranch),
+                    (mdistgit, 'rpm-master', 'rpm-master')]
+
+        local_branches = [l.split()[1] for
+                          l in git('ls-remote', local).split('\n')
+                          if l.find('refs/heads/') > 0]
+
+        if not in_liberty:
+            del branches[0]
+
     ret = {}
     for branch in branches:
-        if 'refs/heads/%s' % branch not in local_branches:
+        if 'refs/heads/%s' % branch[1] not in local_branches:
             continue
         try:
             status = check_upstream_and_sync(name, workdir, local,
-                                             branch, upstream)
-            ret[branch] = status
+                                             branch[1], branch[0],
+                                             rbranch=branch[2],
+                                             push_tags=push_tags)
+            ret[branch[1]] = status
         except BranchNotFoundException, e:
-            ret[branch] = [1, "Branch not found upstream !: %s" % e]
+            ret[branch[1]] = [1, "Branch not found upstream !: %s" % e]
     return ret
 
 
@@ -779,10 +792,6 @@ def main():
     parser_import.add_argument(
         '--type', type=str, default=None,
         help='Import all project of type (core, client, lib)')
-    parser_import.add_argument(
-        '--refresh-distgit',
-        action='store_true', default=False,
-        help='Sync previously imported disgit repo with upstream')
     parser_import.add_argument('--force',
                                action='store_true', default=False,
                                help='Overwrite a project if already exists')
@@ -808,17 +817,20 @@ def main():
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
 
-    parser_refresh_mirror = subparsers.add_parser(
-        'refresh_mirror',
-        help='Sync imported projects mirror branches')
-    parser_refresh_mirror.add_argument(
+    parser_sync_repo = subparsers.add_parser(
+        'sync_repo',
+        help='Sync imported projects branches (mirror project by default)')
+    parser_sync_repo.add_argument(
         '--name', type=str, help='Limit to project name')
-    parser_refresh_mirror.add_argument(
+    parser_sync_repo.add_argument(
         '--type', type=str, default=None,
         help='Limit to projects of type (core, client, lib)')
-    parser_refresh_mirror.add_argument(
+    parser_sync_repo.add_argument(
         '--user', action='store_true', default=None,
         help='Use your identity to sync (set in config.py)')
+    parser_sync_repo.add_argument(
+        '--distgit', action='store_true', default=None,
+        help='Only act on distgit project branches')
 
     parser_status = subparsers.add_parser(
         'status',
@@ -936,21 +948,28 @@ def main():
         for project in projects:
             kargs['cmdargs'].name = project
             update_config_for_project(**kargs)
-    elif args.command == 'refresh_mirror':
+    elif args.command == 'sync_repo':
         # This command can be used in a Jenkins job so use WORKSPACE if exists.
         kargs['workdir'] = os.environ.get('WORKSPACE', kargs['workdir'])
+        kargs['rtype'] = 'mirror'
+        if args.distgit:
+            kargs['rtype'] = 'distgit'
         final_status = {}
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
             projects = get_project_status(projects, 2)
         else:
             projects = [args.name]
-        projects = projects[:3]
-        print "Refresh mirror branches for projects : %s" % ", ".join(projects)
+        projects = projects[8:14]
+        print "Refresh %s branches for projects : %s" % (
+            kargs['rtype'], ", ".join(projects))
         for project in projects:
             kargs['cmdargs'].name = project
-            ret = refresh_mirror_for_project(**kargs)
-            final_status[kargs['cmdargs'].name] = ret
+            ret = refresh_repo_for_project(**kargs)
+            status_name = kargs['cmdargs'].name
+            if args.distgit:
+                status_name += '-distgit'
+            final_status[status_name] = ret
         print "\n=== Sync summary ==="
         cmd_ret = 0
         for project, bstatus in final_status.items():
