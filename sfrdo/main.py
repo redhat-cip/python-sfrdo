@@ -389,41 +389,53 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
             git('review', '-i', '-y', 'liberty-patches')
 
 
-def check_upstream_and_sync(sfdistgit, workdir, local, branch,
+def check_upstream_and_sync(name, workdir, local, branch,
                             upstream, rbranch=None):
     if not rbranch:
         rbranch = branch
     print "Attempt to sync %s:%s from %s:%s" % (local, branch,
                                                 upstream, rbranch)
-    u_ref = [l.split()[0] for l in git('ls-remote', upstream).split('\n')
-             if l.endswith('refs/heads/%s' % rbranch)][0]
-    l_ref = [l.split()[0] for l in git('ls-remote', local).split('\n')
-             if l.endswith('refs/heads/%s' % branch)][0]
+
+    try:
+        u_ref = [l.split()[0] for l in git('ls-remote', upstream).split('\n')
+                 if l.endswith('refs/heads/%s' % rbranch)][0]
+    except IndexError:
+        raise BranchNotFoundException(
+            "%s does not exist on %s" % (rbranch, upstream))
+    try:
+        l_ref = [l.split()[0] for l in git('ls-remote', local).split('\n')
+                 if l.endswith('refs/heads/%s' % branch)][0]
+    except IndexError:
+        l_ref = 0
 
     if l_ref == u_ref:
-        print "Distgit is up to date. Nothing to do."
+        print "Branch is up to date. Nothing to do."
     else:
         print "Need a sync [l:%s != u:%s]" % (l_ref, u_ref)
-        pdir = os.path.join(workdir, sfdistgit)
+        pdir = os.path.join(workdir, name)
         # Clean previous if exist
         if os.path.isdir(pdir):
             shutil.rmtree(pdir)
-        with cdir(workdir):
-            git('clone', 'http://%s/r/%s' % (config.rpmfactory, sfdistgit),
-                sfdistgit)
-        with cdir(pdir):
-            msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
-                                         'admin', config.adminpass)
-            msf.addUsertoProjectGroups(sfdistgit, config.useremail,
-                                       "ptl-group")
-            # Set remotes and fetch objects
-            git('remote', 'add', 'local', local)
-            git('remote', 'add', 'upstream', upstream)
-            git('fetch', '--all')
-            sync_and_push_branch('upstream', 'local',
-                                 rbranch, branch)
-            msf.deleteUserFromProjectGroup(sfdistgit, config.useremail,
-                                           "ptl-group")
+        try:
+            with cdir(workdir):
+                git('clone', 'http://%s/r/%s' % (config.rpmfactory, name),
+                    name)
+            with cdir(pdir):
+                # Set remotes and fetch objects
+                git('remote', 'add', 'local', local)
+                git('remote', 'add', 'upstream', upstream)
+                git('fetch', '--all')
+                difflog = git('--no-pager', 'log', '--oneline', '%s..%s' %
+                              (l_ref, u_ref)).split('\n')
+                for cmsg in difflog:
+                    print cmsg
+                sync_and_push_branch('upstream', 'local',
+                                     rbranch, branch)
+        except Exception, e:
+            return [1, "Sync failed: %s" % e]
+
+        return [0, "Sync succeed: %s commits has been synced" % len(difflog)]
+    return [0, "Repo is up to date. Nothing to do."]
 
 
 def project_import(cmdargs, workdir, rdoinfo):
@@ -449,6 +461,8 @@ def project_import(cmdargs, workdir, rdoinfo):
 
     # Refresh rdo-liberty and rpm-master
     if cmdargs.refresh_distgit:
+        if cmdargs.serviceuser:
+            sfgerrit = config.gerrit_rpmfactory % config.service_user_name
         # The project exist
         if create == False:
             if conf == 'core':
@@ -586,7 +600,7 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
 
     # Add a service user to the project group
     print
-    add_to_project_groups(name, config.service_user)
+    add_to_project_groups(name, config.service_user_mail)
 
 
 def get_project_status(projects, typ):
@@ -676,6 +690,37 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
                     name, e)
 
 
+def refresh_mirror_for_project(cmdargs, workdir, rdoinfo):
+    print "\n=== Refresh mirror for project %s" % cmdargs.name
+
+    (name, distgit, upstream,
+     sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
+                                                              cmdargs.name)
+
+    if cmdargs.user:
+        sfgerrit = config.gerrit_rpmfactory % config.userlogin
+    else:
+        sfgerrit = config.gerrit_rpmfactory % config.service_user_name
+
+    name = cmdargs.name
+    local = sfgerrit + name
+
+    branches = ('master', 'stable/liberty')
+    local_branches = [l.split()[1] for l in git('ls-remote', local).split('\n')
+                      if l.find('refs/heads/') > 0]
+    ret = {}
+    for branch in branches:
+        if 'refs/heads/%s' % branch not in local_branches:
+            continue
+        try:
+            status = check_upstream_and_sync(name, workdir, local,
+                                             branch, upstream)
+            ret[branch] = status
+        except BranchNotFoundException, e:
+            ret[branch] = [1, "Branch not found upstream !: %s" % e]
+    return ret
+
+
 def delete_project(p):
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
@@ -744,6 +789,9 @@ def main():
     parser_import.add_argument('--from-p',
                                type=str, default=False,
                                help='Restart import from "project"')
+    parser_import.add_argument(
+        '--serviceuser', action='store_true', default=None,
+        help='Use service identity to sync (set in config.py)')
 
     parser_create = subparsers.add_parser(
         'create',
@@ -759,6 +807,18 @@ def main():
     parser_sync_maintainer.add_argument(
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
+
+    parser_refresh_mirror = subparsers.add_parser(
+        'refresh_mirror',
+        help='Sync imported projects mirror branches')
+    parser_refresh_mirror.add_argument(
+        '--name', type=str, help='Limit to project name')
+    parser_refresh_mirror.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to projects of type (core, client, lib)')
+    parser_refresh_mirror.add_argument(
+        '--user', action='store_true', default=None,
+        help='Use your identity to sync (set in config.py)')
 
     parser_status = subparsers.add_parser(
         'status',
@@ -876,3 +936,27 @@ def main():
         for project in projects:
             kargs['cmdargs'].name = project
             update_config_for_project(**kargs)
+    elif args.command == 'refresh_mirror':
+        # This command can be used in a Jenkins job so use WORKSPACE if exists.
+        kargs['workdir'] = os.environ.get('WORKSPACE', kargs['workdir'])
+        final_status = {}
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        projects = projects[:3]
+        print "Refresh mirror branches for projects : %s" % ", ".join(projects)
+        for project in projects:
+            kargs['cmdargs'].name = project
+            ret = refresh_mirror_for_project(**kargs)
+            final_status[kargs['cmdargs'].name] = ret
+        print "\n=== Sync summary ==="
+        cmd_ret = 0
+        for project, bstatus in final_status.items():
+            for branch, status in bstatus.items():
+                print "project %s:%s: %s" % (
+                    project, branch, status[1])
+                cmd_ret += status[0]
+        print "Return %s" % cmd_ret
+        sys.exit(cmd_ret)
