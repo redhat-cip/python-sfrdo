@@ -39,15 +39,7 @@ from sfrdo import msfutils
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
-# http://softwarefactory-project.io/etherpad/p/rdo_import_status
-
-
-# TODO(fbo): Add an option to fired the periodic job to fetch lasts changes
-# on mirror repos
-
-
-BL = ['packstack',
-      ]
+BL = ['packstack']
 
 
 NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
@@ -56,6 +48,58 @@ NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
                   'networking-arista', 'networking-cisco', 'vmware-nsx',
                   'networking-mlnx', 'networking-odl', 'app-catalog-ui',
                   'UcsSdk', 'cachetools']
+
+
+RDOINFOS_USERS_FIXES = {
+    'fpercoco@redhat.com': ('flaper87', 'flaper87@flaper87.org'),
+    'zaitcev@redhat.com': ('zaitcev', 'ota4250258078e9638@kotori.zaitcev.us'),
+    'greg.swift@rackspace.net': ('gregswift', 'xaeth@fedoraproject.org'),
+    'gchamoul@redhat.com':
+        ('strider', 'strider@rpmfactory.beta.rdoproject.org'),
+    'jprovazn@redhat.com': ('jprovaznik', 'jan.provaznik@gmail.com'),
+    'dtantsur@redhat.com': ('dtantsur', 'dtantsur@redhat.com'),
+    'dmellado@redhat.com': ('danielmellado', 'danielmelladoarea@gmail.com'),
+    'mrunge@redhat.com': ('mrunge', 'mrunge@redhat.com'),
+    'victoria@redhat.com': ('vkmc', 'victoria@redhat.com'),
+    'dprince@redhat.com': ('dprince', 'dprince@redhat.com'),
+    'nmagnezi@redhat.com': ('nmagnezi', 'nmagnezi@redhat.com'),
+    'mabaakou@redhat.com': ('sileht', 'sileht@sileht.net'),
+    'trown@redhat.com': ('trown', 'trown@redhat.com'),
+    'hguemar@redhat.com': ('hguemar', 'hguemar@fedoraproject.org'),
+    'ihrachys@redhat.com': ('booxter', 'ihrachys@redhat.com'),
+    'sferdjao@redhat.com': ('sahid', 'sahid.ferdjaoui@gmail.com'),
+    'jruzicka@redhat.com': ('yac', 'yac@rpmfactory.beta.rdoproject.org'),
+    'brad@redhat.com': ('bcrochet', 'brad@redhat.com'),
+    'slinaber@redhat.com': ('eggmaster', 'slinaber@redhat.com'),
+    'eglynn@redhat.com': ('eglynn', 'eglynn@redhat.com'),
+    'lbezdick@redhat.com': ('xbezdick', 'lbezdick@redhat.com'),
+    'msm@redhat.com': ('elmiko', 'msm@opbstudios.com'),
+    'vimartin@redhat.com': ('vkmc', 'victoria@redhat.com'),
+    'pkilambi@redhat.com': ('pkilambi', None),
+    'eharney@redhat.com': ('eharney', None),
+    'jslagle@redhat.com': ('slagle', None),
+    'matmaul@gmail.com': ('matmaul', None),
+    'egafford@redhat.com': ('egafford', None),
+    'ndipanov@redhat.com': ('djipko', None),
+    'ifarkas@redhat.com': ('ifarkas', None),
+    'zbitter@redhat.com': ('zaneb', None),
+    'apevec@redhat.com': ('apevec', None),
+    'gauvain.pocentek@objectif-libre.com': ('gpocentek', None),
+    'apevec@gmail.com': ('apavec', None),
+    'Kevin.Fox@pnnl.gov': ('kfox1111', None),
+    'majopela@redhat.com': ('mangelajo', None),
+    'marcos.fermin.lobo@cern.ch': ('marcosflobo', None),
+    'chkumar@redhat.com': ('chkumar246', None),
+    'ryansb@redhat.com': (None, None),
+    'openstack-networking@cisco.com': (None, None),
+    'jpena@redhat.com': (None, None),
+    'lennyb@mellanox.com': (None, None),
+    'brdemers@cisco.com': (None, None),
+    'ichavero@redhat.com': (None, None),
+    'mmagr@redhat.com': (None, None),
+    'xin.wu@bigswitch.com': (None, None),
+    'pbrady@redhat.com': (None, None),
+}
 
 
 RDOINFOS_FIXES = {
@@ -549,17 +593,9 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
 
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
-    users = msf.listRegisteredUsers()
-    users = json.loads(users)
 
     infos = msf.listAllProjectDetails()
     memberships = fetch_project_members(infos, name)
-    github_usernames = {}
-    if cmdargs.github_usernames:
-        with open(cmdargs.github_usernames, 'r') as f:
-            for l in f.readlines():
-                email, username = l.split(':')
-                github_usernames[email]
 
     # Clean actual members
     print "\nAttempt to clean existing members in %s" % name
@@ -575,56 +611,6 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
 
     for maintainer in maints:
         print "\nAttempt to add maintainer %s" % maintainer
-        if maintainer in [user[1] for user in users]:
-            print "%s was found, checking with Github ..." % maintainer
-            rpmf_user = [user for user in users if maintainer == user[1]]
-            rpmf_user = rpmf_user[0]
-            user_info = msfutils.get_github_user_by_username(rpmf_user[0])
-            if user_info.get("email") != maintainer:
-                print "%s not correctly synced with Github" % maintainer
-                print "removing %s from rpmfactory ..." % maintainer
-                msfutils.delete_user(config.rpmfactory, 'admin',
-                                     config.admin_pass, email=maintainer)
-                print "looking for real github account ..."
-                if github_usernames.get(maintainer):
-                    u = github_usernames.get(maintainer)
-                    user_info = msfutils.get_github_user_by_username(u)
-                    r = msfutils.provision_user(config.rpmfactory,
-                                                'admin', config.adminpass,
-                                                user_info)
-                    if r.status_code > 399:
-                        print "Could not pre-register user in rpmfactory :("
-                    else:
-                        print "User registered in rpmfactory"
-                else:
-                    print "%s not found, skipping."
-            else:
-                print "%s correctly synced with Github" % maintainer
-        else:
-            msg = "Not registered on SF so looking up on Github"
-            print msg
-            try:
-                if github_usernames.get(maintainer):
-                    u = github_usernames.get(maintainer)
-                    user_info = msfutils.get_github_user_by_username(u)
-                else:
-                    user_info = msfutils.get_github_user_by_mail(maintainer)
-                print "Found user %s detail (username, ...)" % \
-                    user_info['username']
-                print "Do %s pre-registration" % maintainer
-            except Exception as e:
-                msg = "Could not find user."
-                print "%s (Reason: %s)" % (msg, e.message)
-                print "Skip %s pre-registration" % maintainer
-                continue
-            r = msfutils.provision_user(config.rpmfactory,
-                                        'admin', config.adminpass,
-                                        user_info)
-            if r.status_code > 399:
-                print "Could not pre-register user in rpmfactory :("
-            else:
-                print "User registered in rpmfactory"
-
         try:
             add_to_project_groups(name, maintainer)
         except msfutils.SFManagerException, e:
@@ -920,6 +906,10 @@ def main():
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
 
+    subparsers.add_parser(
+        'pre-register-rdo-users',
+        help='This command pre register RDO user (from rdoinfo)')
+
     args = parser.parse_args()
     rdoinfo = fetch_rdoinfo()
     if not args.workdir:
@@ -969,12 +959,15 @@ def main():
         import time
         projects = fetch_all_project_type(rdoinfo, 'core')
         projects.extend(fetch_all_project_type(rdoinfo, 'client'))
-        projects.extend(fetch_all_project_type(rdoinfo, 'core'))
+        projects.extend(fetch_all_project_type(rdoinfo, 'lib'))
+        projects.extend(fetch_all_project_type(rdoinfo, 'None'))
         maints = {}
         for p in projects:
             maintainers = fetch_project_infos(rdoinfo, p)[4]
             for m in maintainers:
                 maints[m] = None
+        print maints
+        return
         for m in maints.keys():
             time.sleep(15)
             print "\n---> Looking for %s" % m
@@ -1032,3 +1025,22 @@ def main():
                 cmd_ret += status[0]
         print "Return %s" % cmd_ret
         sys.exit(cmd_ret)
+    elif args.command == 'pre_register_rdo_users':
+        for k, v in RDOINFOS_USERS_FIXES.items():
+            print "Process: %s %s" % (k, v)
+            msfutils.delete_user(config.rpmfactory, 'admin',
+                                 config.adminpass, email=k)
+            if v[1]:
+                msfutils.delete_user(config.rpmfactory, 'admin',
+                                     config.adminpass, email=v[1])
+            if v[0]:
+                msfutils.delete_user(config.rpmfactory, 'admin',
+                                     config.adminpass, username=v[0])
+                print msfutils.provision_user(config.rpmfactory,
+                                              'admin', config.adminpass,
+                                              {"username": v[0],
+                                               "email": k,
+                                               "full_name": v[0],
+                                               "ssh_keys": []})
+            else:
+                print "Skip"
