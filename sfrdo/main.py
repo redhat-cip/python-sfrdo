@@ -46,9 +46,7 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 # on mirror repos
 
 
-BL = ['tripleoclient',
-      'packstack',
-      'horizon',
+BL = ['packstack',
       ]
 
 
@@ -78,6 +76,8 @@ RDOINFOS_FIXES = {
     },
     'tripleo-incubator': {
         'distgit': 'git://github.com/openstack-packages/tripleo',
+        'conf': 'core',  # Use the core style rdo-liberty branch)
+        'rdo-liberty-tag': '7461b01e393931e0f4cf1ff38eadb0755a49d658',
     },
     'os-apply-config': {
         'distgit': 'git://pkgs.fedoraproject.org/os-apply-config.git',
@@ -113,8 +113,10 @@ RDOINFOS_FIXES = {
             'git://pkgs.fedoraproject.org/python-django-openstack-auth.git',
     },
     'tripleoclient': {
+        #  https://github.com/openstack-packages/python-tripleoclient/blob/rdo-liberty/python-tripleoclient.spec#L14
         'distgit': 'git://github.com/openstack-packages/python-tripleoclient',
         'conf': 'core',  # Use the core style rdo-liberty branch)
+        'rdo-liberty-tag': '2aac09de13f4cfd4b9d87cdcdd860388e21aef0a',
     },
     'openstack-puppet-modules': {
         'distgit':
@@ -123,6 +125,14 @@ RDOINFOS_FIXES = {
     'networking-arista': {  # Can be reported
         'distgit':
             'git://github.com/openstack-packages/python-networking-arista',
+    },
+    'horizon': {  # Can be reported
+        'conf': 'client',  # Use the core style rdo-liberty branch)
+    },
+    'tempest': {
+        'conf': 'client',
+        'distgit': 'git://pkgs.fedoraproject.org/tempest.git',
+        'rdo-liberty-tag': 'openstack-tempest-liberty-20151020',
     },
 }
 
@@ -306,7 +316,8 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
             is_branches_exists([('upstream-mdistgit', 'rpm-master')])
             sync_and_push_branch('upstream-mdistgit', 'gerrit',
                                  'rpm-master')
-        elif conf == 'client' or conf == 'lib' or conf == 'None':
+        elif conf == 'client' or conf == 'lib' or \
+             conf == 'None':
             if in_liberty:
                 # Assume master targets liberty atm
                 is_branches_exists([('upstream', 'master')])
@@ -364,7 +375,11 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
         print "%s owns %s patches" % (sfdistgit, len(flat_patches))
 
         # Fetch upstream tag based on the spec file
-        version = fetch_upstream_tag_name()
+        if name in RDOINFOS_FIXES and 'rdo-liberty-tag' in RDOINFOS_FIXES[name]:
+            # Overwrite spec
+            version = RDOINFOS_FIXES[name]['rdo-liberty-tag']
+        else:
+            version = fetch_upstream_tag_name()
         print "%s packaging is based on tag %s" % (sfdistgit, version)
     with cdir(os.path.join(workdir, name)):
         print "Create %s based on tag %s" % ('liberty-patches', version)
@@ -891,7 +906,7 @@ def main():
             kargs['cmdargs'].name = project
             display_details(**kargs)
             status = project_import(**kargs)
-            if status and not args.refresh_distgit:
+            if status:
                 project_sync_maints(**kargs)
                 update_config_for_project(**kargs)
     elif args.command == 'create':
