@@ -39,7 +39,7 @@ from sfrdo import msfutils
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 
 
-BL = ['packstack']
+BL = []
 
 
 NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
@@ -48,6 +48,11 @@ NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
                   'networking-arista', 'networking-cisco', 'vmware-nsx',
                   'networking-mlnx', 'networking-odl', 'app-catalog-ui',
                   'UcsSdk', 'cachetools']
+
+
+# g42b3426 is not found upstream so force to do not create
+# the liberty-patches branch even if in liberty.
+NOT_IN_LIBERTY.append('packstack')
 
 
 RDOINFOS_USERS_FIXES = {
@@ -177,6 +182,11 @@ RDOINFOS_FIXES = {
         'conf': 'client',
         'distgit': 'git://pkgs.fedoraproject.org/tempest.git',
         'rdo-liberty-tag': 'openstack-tempest-liberty-20151020',
+    },
+    'packstack': {
+        'conf': 'core',
+        'distgit': 'git://github.com/openstack-packages/packstack',
+        'rdo-liberty-tag': 'g42b3426',
     },
 }
 
