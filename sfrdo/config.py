@@ -29,4 +29,4 @@ userlogin = 'morucci'
 useremail = 'fabien.dot.boucher@gmail.com'
 userpass = ''
 
-adminpass = ''
+adminpass = 'xe3or_ohQuiiz6ki'
