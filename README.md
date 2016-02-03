@@ -25,7 +25,7 @@ optional arguments:
   --workdir WORKDIR     helper option
 
 commands:
-  {import,create,sync_maints,status,ghuser,project_members,infos}
+  {import,create,sync_maints,status,ghuser,project_members,infos,release_branches}
                         Available commands help
     import              Import an existing RDO project (need admin creds)
     create              Create a new project template (need admin creds)
@@ -34,4 +34,5 @@ commands:
     ghuser              Find username based on Github
     project_members     Display project memberships
     infos               Display infos from rdoinfo for a project
+    release_branches    Create specific release branches if they don't exist
 ```
