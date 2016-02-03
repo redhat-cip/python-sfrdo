@@ -34,6 +34,7 @@ from copy import deepcopy
 
 from sfrdo import config
 from sfrdo import msfutils
+from sfrdo import branches
 
 
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
@@ -819,6 +820,19 @@ def project_members(cmdargs, workdir, rdoinfo):
     print ret
 
 
+def create_stable_and_patches_branches(cmdargs):
+    print "STABLE"
+    branches.create_remote_branch(config.rpmfactory, 'admin', config.adminpass,
+                                  branch_template='stable/%s',
+                                  newer_than=cmdargs.newer_than,
+                                  dry_run=cmdargs.dry_run)
+    print "PATCHES"
+    branches.create_remote_branch(config.rpmfactory, 'admin', config.adminpass,
+                                  branch_template='%s-patches',
+                                  newer_than=cmdargs.newer_than,
+                                  dry_run=cmdargs.dry_run)
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -890,6 +904,16 @@ def main():
     parser_status.add_argument(
         '--clean', action='store_true', default=None,
         help='Clean partially imported projects')
+
+    parser_release_branches = subparsers.add_parser(
+        'release_branches',
+        help='Create stable/RELEASE and RELEASE-patches branches if needed')
+    parser_release_branches.add_argument(
+        '--newer-than', type=str, default='kilo',
+        help='Do this for releases newer than XXX')
+    parser_release_branches.add_argument(
+        '--dry-run', action='store_true', default=True,
+        help='Run the process but do not create the branches')
 
     subparsers.add_parser(
         'ghuser',
@@ -1054,3 +1078,5 @@ def main():
                                                "ssh_keys": []})
             else:
                 print "Skip"
+    elif args.command == 'release_branches':
+        create_stable_and_patches_branches(args)
