@@ -34,6 +34,7 @@ from copy import deepcopy
 
 from sfrdo import config
 from sfrdo import msfutils
+from sfrdo import branches
 
 
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
@@ -819,6 +820,52 @@ def project_members(cmdargs, workdir, rdoinfo):
     print ret
 
 
+def create_stable_and_patches_branches(cmdargs):
+    print "STABLE"
+    s = branches.create_remote_branch(config.rpmfactory, cmdargs.user,
+                                      project=cmdargs.project,
+                                      branch_template='stable/%s',
+                                      newer_than=cmdargs.newer_than,
+                                      dry_run=cmdargs.dry_run)
+    print "PATCHES"
+    p = branches.create_remote_branch(config.rpmfactory, cmdargs.user,
+                                      project=cmdargs.project,
+                                      branch_template='%s-patches',
+                                      newer_than=cmdargs.newer_than,
+                                      dry_run=cmdargs.dry_run)
+    for release in s.keys():
+        print '\n====== %s ======' % release.upper()
+        print 'Missing repositories:'
+        missing = dict([(k, v) for k, v in s[release]['missing'].items()] +
+                       [(k, v) for k, v in p[release]['missing'].items()])
+        for m in missing.keys():
+            print '* %s' % m
+        print '---------------------'
+        print 'Repositories missing stable/%s branch:' % release
+        for r, v in s[release]['no_branch'].items():
+            print '* %s (v. %s)' % (r, v)
+        print '---------------------'
+        print 'Repositories missing %s-patches branch:' % release
+        for r, v in p[release]['no_branch'].items():
+            print '* %s (v. %s)' % (r, v)
+        print '---------------------'
+        print 'Repositories with obsolete stable/%s branch:' % release
+        for r, v in s[release]['obsolete'].items():
+            print '* %s (should be v. %s)' % (r, v)
+        print '---------------------'
+        print 'Repositories with obsolete %s-patches branch:' % release
+        for r, v in p[release]['obsolete'].items():
+            print '* %s (should be v. %s)' % (r, v)
+        print '---------------------'
+        print 'Repositories with up-to-date stable/%s branch:' % release
+        for r, v in s[release]['synced'].items():
+            print '* %s (v. %s or above)' % (r, v)
+        print '---------------------'
+        print 'Repositories with up-to-date %s-patches branch:' % release
+        for r, v in p[release]['synced'].items():
+            print '* %s (v. %s or above)' % (r, v)
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -890,6 +937,25 @@ def main():
     parser_status.add_argument(
         '--clean', action='store_true', default=None,
         help='Clean partially imported projects')
+
+    parser_release_branches = subparsers.add_parser(
+        'release_branches',
+        help='Create stable/RELEASE and RELEASE-patches branches if needed')
+    parser_release_branches.add_argument(
+        '--user', type=str, default=None,
+        help=('User with whom project(s) will be checked out. User should be '
+              'at least core-dev on the project'))
+    parser_release_branches.add_argument(
+        '--project', type=str, default=None,
+        help=('Limit task to this project, default is to scan all OS '
+              'projects. Projects are understood the way they are listed in '
+              'the openstack-releases repository'))
+    parser_release_branches.add_argument(
+        '--newer-than', type=str, default='kilo',
+        help='Do this for releases newer than XXX')
+    parser_release_branches.add_argument(
+        '--dry-run', action='store_true', default=False,
+        help='Run the process but do not create the branches')
 
     subparsers.add_parser(
         'ghuser',
@@ -1054,3 +1120,5 @@ def main():
                                                "ssh_keys": []})
             else:
                 print "Skip"
+    elif args.command == 'release_branches':
+        create_stable_and_patches_branches(args)
