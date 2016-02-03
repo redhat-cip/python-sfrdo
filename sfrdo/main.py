@@ -16,17 +16,14 @@
 
 import os
 import sys
-import imp
 import json
 import yaml
 import shutil
 import logging
 import requests
-import urlparse
 import tempfile
 import argparse
 
-from rdopkg.repoman import RepoManager
 from rdopkg.helpers import cdir
 from rdopkg.utils.cmd import git
 
@@ -34,6 +31,8 @@ from copy import deepcopy
 
 from sfrdo import config
 from sfrdo import msfutils
+from sfrdo import osreleases
+from sfrdo import rdoinfoutils
 
 
 logging.basicConfig(filename='warns.log', level=logging.DEBUG)
@@ -55,142 +54,6 @@ NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
 NOT_IN_LIBERTY.append('packstack')
 
 
-RDOINFOS_USERS_FIXES = {
-    'fpercoco@redhat.com': ('flaper87', 'flaper87@flaper87.org'),
-    'zaitcev@redhat.com': ('zaitcev', 'ota4250258078e9638@kotori.zaitcev.us'),
-    'greg.swift@rackspace.net': ('gregswift', 'xaeth@fedoraproject.org'),
-    'gchamoul@redhat.com':
-        ('strider', 'strider@rpmfactory.beta.rdoproject.org'),
-    'jprovazn@redhat.com': ('jprovaznik', 'jan.provaznik@gmail.com'),
-    'dtantsur@redhat.com': ('dtantsur', 'dtantsur@redhat.com'),
-    'dmellado@redhat.com': ('danielmellado', 'danielmelladoarea@gmail.com'),
-    'mrunge@redhat.com': ('mrunge', 'mrunge@redhat.com'),
-    'victoria@redhat.com': ('vkmc', 'victoria@redhat.com'),
-    'dprince@redhat.com': ('dprince', 'dprince@redhat.com'),
-    'nmagnezi@redhat.com': ('nmagnezi', 'nmagnezi@redhat.com'),
-    'mabaakou@redhat.com': ('sileht', 'sileht@sileht.net'),
-    'trown@redhat.com': ('trown', 'trown@redhat.com'),
-    'hguemar@redhat.com': ('hguemar', 'hguemar@fedoraproject.org'),
-    'ihrachys@redhat.com': ('booxter', 'ihrachys@redhat.com'),
-    'sferdjao@redhat.com': ('sahid', 'sahid.ferdjaoui@gmail.com'),
-    'jruzicka@redhat.com': ('yac', 'yac@rpmfactory.beta.rdoproject.org'),
-    'brad@redhat.com': ('bcrochet', 'brad@redhat.com'),
-    'slinaber@redhat.com': ('eggmaster', 'slinaber@redhat.com'),
-    'eglynn@redhat.com': ('eglynn', 'eglynn@redhat.com'),
-    'lbezdick@redhat.com': ('xbezdick', 'lbezdick@redhat.com'),
-    'msm@redhat.com': ('elmiko', 'msm@opbstudios.com'),
-    'vimartin@redhat.com': ('vkmc', 'victoria@redhat.com'),
-    'pkilambi@redhat.com': ('pkilambi', None),
-    'eharney@redhat.com': ('eharney', None),
-    'jslagle@redhat.com': ('slagle', None),
-    'matmaul@gmail.com': ('matmaul', None),
-    'egafford@redhat.com': ('egafford', None),
-    'ndipanov@redhat.com': ('djipko', None),
-    'ifarkas@redhat.com': ('ifarkas', None),
-    'zbitter@redhat.com': ('zaneb', None),
-    'apevec@redhat.com': ('apevec', None),
-    'gauvain.pocentek@objectif-libre.com': ('gpocentek', None),
-    'apevec@gmail.com': ('apavec', None),
-    'Kevin.Fox@pnnl.gov': ('kfox1111', None),
-    'majopela@redhat.com': ('mangelajo', None),
-    'marcos.fermin.lobo@cern.ch': ('marcosflobo', None),
-    'chkumar@redhat.com': ('chkumar246', None),
-    'ryansb@redhat.com': (None, None),
-    'openstack-networking@cisco.com': (None, None),
-    'jpena@redhat.com': (None, None),
-    'lennyb@mellanox.com': (None, None),
-    'brdemers@cisco.com': (None, None),
-    'ichavero@redhat.com': (None, None),
-    'mmagr@redhat.com': (None, None),
-    'xin.wu@bigswitch.com': (None, None),
-    'pbrady@redhat.com': (None, None),
-}
-
-
-RDOINFOS_FIXES = {
-    'glance_store': {
-        'distgit': 'git://pkgs.fedoraproject.org/python-glance-store.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'swift': {
-        'distgit': 'git://pkgs.fedoraproject.org/openstack-swift.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'horizon': {
-        'distgit': 'git://github.com/openstack-packages/horizon',
-    },
-    'dib-utils': {
-        'distgit': 'git://pkgs.fedoraproject.org/dib-utils.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'tripleo-incubator': {
-        'distgit': 'git://github.com/openstack-packages/tripleo',
-        'conf': 'core',  # Use the core style rdo-liberty branch)
-        'rdo-liberty-tag': '7461b01e393931e0f4cf1ff38eadb0755a49d658',
-    },
-    'os-apply-config': {
-        'distgit': 'git://pkgs.fedoraproject.org/os-apply-config.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'os-collect-config': {
-        'distgit': 'git://pkgs.fedoraproject.org/os-collect-config.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'os-net-config': {
-        'distgit': 'git://pkgs.fedoraproject.org/os-net-config.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'os-refresh-config': {
-        'distgit': 'git://pkgs.fedoraproject.org/os-refresh-config.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'os-cloud-config': {
-        'distgit': 'git://pkgs.fedoraproject.org/os-cloud-config.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'zaqar': {
-        'distgit': 'git://pkgs.fedoraproject.org/openstack-zaqar.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'ironic-python-agent': {
-        'distgit':
-            'git://pkgs.fedoraproject.org/openstack-ironic-python-agent.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'django_openstack_auth': {
-        'distgit':
-            'git://pkgs.fedoraproject.org/python-django-openstack-auth.git',
-    },
-    'tripleoclient': {
-        #  https://github.com/openstack-packages/python-tripleoclient/blob/rdo-liberty/python-tripleoclient.spec#L14
-        'distgit': 'git://github.com/openstack-packages/python-tripleoclient',
-        'conf': 'core',  # Use the core style rdo-liberty branch)
-        'rdo-liberty-tag': '2aac09de13f4cfd4b9d87cdcdd860388e21aef0a',
-    },
-    'openstack-puppet-modules': {
-        'distgit':
-            'git://pkgs.fedoraproject.org/openstack-puppet-modules.git',
-    },
-    'networking-arista': {  # Can be reported
-        'distgit':
-            'git://github.com/openstack-packages/python-networking-arista',
-    },
-    'horizon': {  # Can be reported
-        'conf': 'client',  # Use the core style rdo-liberty branch)
-    },
-    'tempest': {
-        'conf': 'client',
-        'distgit': 'git://pkgs.fedoraproject.org/tempest.git',
-        'rdo-liberty-tag': 'openstack-tempest-liberty-20151020',
-    },
-    'packstack': {
-        'conf': 'core',
-        'distgit': 'git://github.com/openstack-packages/packstack',
-        'rdo-liberty-tag': 'g42b3426',
-    },
-}
-
-
 class BranchNotFoundException(Exception):
     pass
 
@@ -201,69 +64,6 @@ class RequestedTagDoesNotExists(Exception):
 
 class PRequestedTagDoesNotExists(Exception):
     pass
-
-
-def fetch_rdoinfo():
-    if not os.path.isdir(config.userdir):
-        os.mkdir(config.userdir)
-    rm = RepoManager(config.userdir, config.rdoinfo, verbose=True)
-    rm.init(force_fetch=True)
-    file, path, desc = imp.find_module('rdoinfo', [rm.repo_path])
-    rdoinfo = imp.load_module('rdoinfo', file, path, desc)
-    return rdoinfo.parse_info_file(os.path.join(config.userdir,
-                                                'rdoinfo/rdo.yml'))
-
-
-def fetch_project_infos(rdoinfo, upstream_project_name):
-    select = [pkg for pkg in rdoinfo['packages']
-              if pkg['project'] == upstream_project_name]
-    if not select:
-        raise Exception('Project not found in rdoinfo: %s' %
-                        upstream_project_name)
-    infos = select[0]
-
-    distgit = infos['distgit']
-    # Change scheme from ssh to git (avoid the need of being authenticated)
-    # For some projects we need it
-    # (eg. client project) still hosted fedora side.
-    parts = urlparse.urlparse(distgit)
-    distgit = urlparse.urlunparse(['git', parts.netloc,
-                                   parts.path, '', '', ''])
-    conf = 'None'
-    if 'conf' in infos:
-        conf = infos['conf']
-
-    if upstream_project_name in RDOINFOS_FIXES:
-        if 'distgit' in RDOINFOS_FIXES[upstream_project_name]:
-            print "Distgit target has been fixed by sfrdo !"
-            distgit = RDOINFOS_FIXES[upstream_project_name]['distgit']
-        if 'conf' in RDOINFOS_FIXES[upstream_project_name]:
-            print "Conf type has been fixed by sfrdo !"
-            conf = RDOINFOS_FIXES[upstream_project_name]['conf']
-
-    mdistgit = infos['master-distgit']
-    upstream = infos['upstream']
-    name = infos['project']
-    maints = infos['maintainers']
-    sfdistgit = "%s-distgit" % name
-    return (name, distgit, upstream,
-            sfdistgit, maints, conf, mdistgit)
-
-
-def display_details(cmdargs, rdoinfo, workdir=None):
-    name, distgit, upstream, \
-        sfdistgit, maintsi, conf, \
-        mdistgit = fetch_project_infos(rdoinfo, cmdargs.name)
-    print "=== Details ==="
-    print "Project name is: %s" % name
-    print "Project type is: %s" % conf
-    print "Project upstream RDO distgit is: %s" % distgit
-    print "Project upstream RDO master-distgit is: %s" % mdistgit
-
-    print "Project upstream is: %s" % upstream
-
-    print "Project distgit name on SF is: %s" % sfdistgit
-    print
 
 
 def fetch_all_project_type(rdoinfo, t='None'):
@@ -428,10 +228,10 @@ def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
         print "%s owns %s patches" % (sfdistgit, len(flat_patches))
 
         # Fetch upstream tag based on the spec file
-        if name in RDOINFOS_FIXES and \
-           'rdo-liberty-tag' in RDOINFOS_FIXES[name]:
+        if name in rdoinfoutils.RDOINFOS_FIXES and \
+           'rdo-liberty-tag' in rdoinfoutils.RDOINFOS_FIXES[name]:
             # Overwrite spec
-            version = RDOINFOS_FIXES[name]['rdo-liberty-tag']
+            version = rdoinfoutils.RDOINFOS_FIXES[name]['rdo-liberty-tag']
         else:
             version = fetch_upstream_tag_name()
         print "%s packaging is based on tag %s" % (sfdistgit, version)
@@ -513,7 +313,7 @@ def project_import(cmdargs, workdir, rdoinfo):
     print "\n=== Start import ==="
     name, distgit, upstream, \
         sfdistgit, maints, conf, mdistgit = \
-        fetch_project_infos(rdoinfo, cmdargs.name)
+        rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
 
     sfgerrit = config.gerrit_rpmfactory % config.userlogin
 
@@ -597,9 +397,9 @@ def add_to_project_groups(name, maintainer):
 def project_sync_maints(cmdargs, workdir, rdoinfo):
     print "\n=== Sync maintainer in project " + \
           "%s groups + service user ===" % cmdargs.name
-    (name, distgit, upstream,
-     sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
-                                                              cmdargs.name)
+    (name, distgit, upstream, sfdistgit, maints,
+     conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo,
+                                                        cmdargs.name)
 
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
@@ -718,9 +518,8 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
 
 
 def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
-    (name, distgit, upstream,
-     sfdistgit, maints, conf, mdistgit) = fetch_project_infos(rdoinfo,
-                                                              cmdargs.name)
+    (name, distgit, upstream, sfdistgit, maints,
+     conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
     if rtype == 'distgit':
         name = sfdistgit
 
@@ -819,6 +618,84 @@ def project_members(cmdargs, workdir, rdoinfo):
     print ret
 
 
+def get_release_branch_status(cmdargs):
+    if cmdargs.branch == 'stable':
+        template = 'stable/%s'
+    elif cmdargs.branch == 'patches':
+        template = '%s-patches'
+    else:
+        template = cmdargs.branch
+    status, missing = osreleases.get_projects_status(config.rpmfactory,
+                                                     cmdargs.user,
+                                                     release=cmdargs.release,
+                                                     rdo_project=cmdargs.name,
+                                                     branch_template=template)
+    print "---%s---" % (template % cmdargs.release).upper()
+    line = ("%(project)30s  %(is_in_rpmfactory)13s  %(has_branch)6s  "
+            "%(hash)14s  %(upstream_name)30s  %(version)15s  "
+            "%(upstream_hash)14s  %(synced)6s")
+    print line % {'project': 'Project',
+                  'is_in_rpmfactory': 'In RPMFactory',
+                  'has_branch': 'Branch',
+                  'hash': 'Commit Hash',
+                  'upstream_name': 'Upstream Name',
+                  'upstream_hash': 'Upstream Hash',
+                  'version': 'Version',
+                  'synced': 'Synced'}
+    for p in status:
+        f = {'project': p,
+             'is_in_rpmfactory': status[p]['rdo'] and 'YES' or 'NO',
+             'has_branch': 'N/A',
+             'hash': 'N/A',
+             'upstream_name': status[p]['upstream']['name'],
+             'upstream_hash': status[p]['upstream']['hash'][:8],
+             'version': status[p]['upstream']['version'],
+             'synced': status[p]['branch_is_synced'] and "YES" or "NO"}
+        if status[p]['rdo']:
+            f['has_branch'] = status[p]['rdo']['hash'] and 'YES' or 'NO'
+            if status[p]['rdo']['hash']:
+                f['hash'] = status[p]['rdo']['hash'][:8]
+        print line % f
+    print "---The following projects are not tracked by RDO---"
+    for m in missing.items():
+        print "* %s (%s)" % m
+
+
+def create_stable_and_patches_branches(cmdargs):
+    if cmdargs.branch == 'stable':
+        template = 'stable/%s'
+    elif cmdargs.branch == 'patches':
+        template = '%s-patches'
+    else:
+        template = cmdargs.branch
+    s = osreleases.create_remote_branch(config.rpmfactory, cmdargs.user,
+                                        project=cmdargs.name,
+                                        branch_template=template,
+                                        release=cmdargs.release,
+                                        dry_run=cmdargs.dry_run,
+                                        modify_branches=False)
+
+    print '\n====== %s [%s] ======' % (cmdargs.release.upper(),
+                                       template % cmdargs.release)
+    print 'Repositories missing in %s:' % config.rpmfactory
+    for m in s['missing'].keys():
+        print '* %s' % m
+    print '---------------------'
+    print 'Repositories without branch %s:' % template % cmdargs.release
+    for r, v in s['no_branch'].items():
+        print r
+    print '---------------------'
+    print 'Repositories with obsolete branch:'
+    for r, v in s['obsolete'].items():
+        print r
+    print '---------------------'
+    print 'Repositories with up-to-date branch:'
+    for r, v in s['synced'].items():
+        if v:
+            print "(synced on this run) ",
+        print r
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -891,6 +768,45 @@ def main():
         '--clean', action='store_true', default=None,
         help='Clean partially imported projects')
 
+    parser_release_branches = subparsers.add_parser(
+        'release_branches',
+        help='Create stable/RELEASE and RELEASE-patches branches if needed')
+    parser_release_subcommand = parser_release_branches.add_subparsers(
+        dest='subcommand')
+    parser_release_status = parser_release_subcommand.add_parser('status')
+    parser_release_create = parser_release_subcommand.add_parser('create')
+    parser_release_status.add_argument(
+        '--user', type=str, default=None,
+        help=('User with whom project(s) will be checked out.'))
+    parser_release_status.add_argument(
+        '--name', type=str, default=None,
+        help=('Limit task to this project, leave empty to scan all OS '
+              'projects.'))
+    parser_release_status.add_argument(
+        '--release', type=str, default='mitaka',
+        help='Do check status for this release')
+    parser_release_status.add_argument(
+        '--branch', type=str, default='stable',
+        help='Check this branch type. Values are "stable" or "patches"')
+
+    parser_release_create.add_argument(
+        '--user', type=str, default=None,
+        help=('User with whom project(s) will be checked out. User should be '
+              'at least core-dev on the project'))
+    parser_release_create.add_argument(
+        '--name', type=str, default=None,
+        help=('Limit task to this project, leave empty to scan all OS '
+              'projects.'))
+    parser_release_create.add_argument(
+        '--release', type=str, default='kilo',
+        help='Do this for releases newer than XXX')
+    parser_release_create.add_argument(
+        '--branch', type=str, default='stable',
+        help='Check this branch type. Values are "stable" or "patches"')
+    parser_release_create.add_argument(
+        '--dry-run', action='store_true', default=False,
+        help='Run the process but do not create the branches')
+
     subparsers.add_parser(
         'ghuser',
         help='Find username based on Github')
@@ -921,7 +837,7 @@ def main():
         help='This command pre register RDO user (from rdoinfo)')
 
     args = parser.parse_args()
-    rdoinfo = fetch_rdoinfo()
+    rdoinfo = rdoinfoutils.fetch_rdoinfo()
     if not args.workdir:
         workdir = tempfile.mkdtemp()
     else:
@@ -943,7 +859,7 @@ def main():
                 print "Skip %s as BL" % project
                 continue
             kargs['cmdargs'].name = project
-            display_details(**kargs)
+            rdoinfoutils.display_details(**kargs)
             status = project_import(**kargs)
             if status:
                 project_sync_maints(**kargs)
@@ -973,7 +889,7 @@ def main():
         projects.extend(fetch_all_project_type(rdoinfo, 'None'))
         maints = {}
         for p in projects:
-            maintainers = fetch_project_infos(rdoinfo, p)[4]
+            maintainers = rdoinfoutils.fetch_project_infos(rdoinfo, p)[4]
             for m in maintainers:
                 maints[m] = None
         print maints
@@ -993,7 +909,7 @@ def main():
     elif args.command == 'project_members':
         project_members(**kargs)
     elif args.command == 'infos':
-        display_details(**kargs)
+        rdoinfoutils.display_details(**kargs)
     elif args.command == 'config':
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
@@ -1036,7 +952,7 @@ def main():
         print "Return %s" % cmd_ret
         sys.exit(cmd_ret)
     elif args.command == 'pre_register_rdo_users':
-        for k, v in RDOINFOS_USERS_FIXES.items():
+        for k, v in rdoinfoutils.RDOINFOS_USERS_FIXES.items():
             print "Process: %s %s" % (k, v)
             msfutils.delete_user(config.rpmfactory, 'admin',
                                  config.adminpass, email=k)
@@ -1054,3 +970,8 @@ def main():
                                                "ssh_keys": []})
             else:
                 print "Skip"
+    elif args.command == 'release_branches':
+        if args.subcommand == 'create':
+            create_stable_and_patches_branches(args)
+        elif args.subcommand == 'status':
+            get_release_branch_status(args)
