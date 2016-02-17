@@ -25,8 +25,9 @@ gerrit_rpmfactory = 'ssh://%%s@%s:29418/' % rpmfactory
 service_user_name = 'sfrdobender'
 service_user_mail = '%s@rpmfactory.beta.rdoproject.org' % service_user_name
 
-userlogin = 'morucci'
-useremail = 'fabien.dot.boucher@gmail.com'
+userlogin = 'admin'
+useremail = 'admin@rpmfactory.beta.rdoproject.org'
+username = 'Anonymous Coward'
 userpass = ''
 
 adminpass = ''

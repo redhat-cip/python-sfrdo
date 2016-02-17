@@ -706,7 +706,7 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
         ret = git('ls-files', '-o', '-m', '--exclude-standard')
         if ret:
             git('commit', '-a', '--author',
-                '%s <%s>' % (config.userlogin, config.useremail),
+                '%s <%s>' % (config.username, config.useremail),
                 '-m', 'Config update for %s' % name)
             git('review', '-i', '-r', 'gerrit', 'master')
             sha = open(".git/refs/heads/master").read()
