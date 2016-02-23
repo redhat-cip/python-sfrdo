@@ -296,10 +296,14 @@ def check_upstream_and_sync(name, workdir, local, branch,
                 git('remote', 'add', 'local', local)
                 git('remote', 'add', 'upstream', upstream)
                 git('fetch', '--all')
-                difflog = git('--no-pager', 'log', '--oneline', '%s..%s' %
-                              (l_ref, u_ref)).split('\n')
-                for cmsg in difflog:
-                    print cmsg
+                # If l_ref is empty, it's a full import, count all log history
+                if l_ref == 0:
+                    difflog = git('--no-pager', 'log', '--oneline', str(u_ref))
+                else:
+                    difflog = git('--no-pager', 'log', '--oneline', '%s..%s' %
+                                  (l_ref, u_ref)).split('\n')
+                    for cmsg in difflog:
+                        print cmsg
                 sync_and_push_branch('upstream', 'local',
                                      rbranch, branch)
                 if push_tags:
@@ -540,25 +544,43 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
 
     push_tags = False
 
+    local_branches = [l.split()[1] for
+                      l in git('ls-remote', local).split('\n')
+                      if l.find('refs/heads/') > 0]
+
     if rtype == 'mirror':
         push_tags = True
         branches = ((upstream, 'master', 'master'),
                     (upstream, 'stable/liberty', 'stable/liberty'))
-        local_branches = [l.split()[1] for
-                          l in git('ls-remote', local).split('\n')
-                          if l.find('refs/heads/') > 0]
     elif rtype == 'distgit':
+        upstream_branches = [l.split()[1] for
+                             l in git('ls-remote', distgit).split('\n')
+                             if l.find('refs/heads/') > 0]
+
         if conf == 'core':
-            rbranch = 'rdo-liberty'
-        if conf == 'client' or conf == 'lib' or conf == 'None':
-            rbranch = 'master'
+            branches = [
+                (distgit, 'rdo-liberty', 'rdo-liberty'),
+                (mdistgit, 'rpm-master', 'rpm-master'),
+                (mdistgit, 'rpm-liberty', 'rpm-liberty'),
+            ]
+            for upstream, upstream_name, local_name in branches:
+                # Make sure branch exists
+                if 'refs/heads/%s' % upstream_name not in upstream_branches:
+                    print "\nWarning: %s is missing %s branch\n" % (
+                        distgit, upstream_name)
+                elif 'refs/heads/%s' % local_name not in local_branches:
+                    print "Creating missing local branch %s" % local_name
+                    check_upstream_and_sync(name, workdir,
+                                            local, local_name,
+                                            upstream, upstream_name,
+                                            push_tags=False)
+                    local_branches.append('refs/heads/%s' % local_name)
 
-        branches = [(distgit, 'rdo-liberty', rbranch),
-                    (mdistgit, 'rpm-master', 'rpm-master')]
-
-        local_branches = [l.split()[1] for
-                          l in git('ls-remote', local).split('\n')
-                          if l.find('refs/heads/') > 0]
+        elif conf == 'client' or conf == 'lib' or conf == 'None':
+            branches = [
+                (distgit, 'rdo-liberty', 'master'),
+                (mdistgit, 'rpm-master', 'rpm-master')
+            ]
 
         if not in_liberty:
             del branches[0]
