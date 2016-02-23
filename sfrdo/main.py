@@ -272,8 +272,9 @@ def check_upstream_and_sync(name, workdir, local, branch,
         u_ref = [l.split()[0] for l in git('ls-remote', upstream).split('\n')
                  if l.endswith('refs/heads/%s' % rbranch)][0]
     except IndexError:
-        raise BranchNotFoundException(
-            "%s does not exist on %s" % (rbranch, upstream))
+        # Set code to 0 avoid exiting with an error code
+        return [0, "[SKIPPED] remote branch not found %s:%s " % (upstream,
+                                                                 rbranch)]
     try:
         l_ref = [l.split()[0] for l in git('ls-remote', local).split('\n')
                  if l.endswith('refs/heads/%s' % branch)][0]
@@ -297,20 +298,26 @@ def check_upstream_and_sync(name, workdir, local, branch,
                 git('remote', 'add', 'local', local)
                 git('remote', 'add', 'upstream', upstream)
                 git('fetch', '--all')
-                difflog = git('--no-pager', 'log', '--oneline', '%s..%s' %
-                              (l_ref, u_ref)).split('\n')
-                for cmsg in difflog:
-                    print cmsg
+                if l_ref != 0:
+                    difflog = git('--no-pager', 'log', '--oneline', '%s..%s' %
+                                  (l_ref, u_ref)).split('\n')
+                    for cmsg in difflog:
+                        print cmsg
                 sync_and_push_branch('upstream', 'local',
                                      rbranch, branch)
                 if push_tags:
                     git('push', 'local', '--tags')
         except Exception, e:
-            return [1, "Sync from %s:%s failed: %s" % (upstream, rbranch, e)]
+            return [1, "[FAILED] Sync from %s:%s (%s)" % (upstream,
+                                                          rbranch, e)]
 
-        return [0, "Sync succeed: %s commits synced from %s:%s" % (
-            len(difflog), upstream, rbranch)]
-    return [0, "Repo is up to date compared to %s:%s" % (upstream, rbranch)]
+        if l_ref == 0:
+            difflog = "BRANCH CREATED"
+        else:
+            difflog = "%s COMMIT(S)" % len(difflog)
+        return [0, "[SYNC SUCCEED: %s] synced from %s:%s" % (
+            difflog, upstream, rbranch)]
+    return [0, "[UP TO DATE] compared to %s:%s" % (upstream, rbranch)]
 
 
 def project_import(cmdargs, workdir, rdoinfo):
@@ -545,47 +552,46 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
 
     local = sfgerrit + name
 
-    in_liberty = True
-    if name in NOT_IN_LIBERTY:
-        in_liberty = False
-
     push_tags = False
 
     if rtype == 'mirror':
         push_tags = True
         branches = ((upstream, 'master', 'master'),
                     (upstream, 'stable/liberty', 'stable/liberty'))
-        local_branches = [l.split()[1] for
-                          l in git('ls-remote', local).split('\n')
-                          if l.find('refs/heads/') > 0]
     elif rtype == 'distgit':
         if conf == 'core':
-            rbranch = 'rdo-liberty'
-        if conf == 'client' or conf == 'lib' or conf == 'None':
-            rbranch = 'master'
+            branches = [
+                (distgit, 'rdo-liberty', 'rdo-liberty'),
+            ]
+        elif conf == 'client' or conf == 'lib' or conf == 'None':
+            branches = []
+            # /!\ Some projects still have a rdo-liberty branch on the
+            # master branch from Fedora VCS.
+            # So try to sync from there first.
+            # Then check if rdo-liberty branch is found on github (mdistgit)
+            # then try to sync from github. /!\
+            if distgit.find('pkgs.fedoraproject.org') >= 0:
+                branches.extend(((distgit, 'rdo-liberty', 'master'),))
+            branches.extend(((mdistgit, 'rdo-liberty', 'rdo-liberty'),))
 
-        branches = [(distgit, 'rdo-liberty', rbranch),
-                    (mdistgit, 'rpm-master', 'rpm-master')]
-
-        local_branches = [l.split()[1] for
-                          l in git('ls-remote', local).split('\n')
-                          if l.find('refs/heads/') > 0]
-
-        if not in_liberty:
-            del branches[0]
+        branches.extend(((mdistgit, 'rdo-kilo', 'rdo-kilo'),
+                         (mdistgit, 'rpm-master', 'rpm-master'),
+                         (mdistgit, 'rpm-liberty', 'rpm-liberty'),
+                         (mdistgit, 'rpm-kilo', 'rpm-kilo'),))
 
     ret = {}
     for branch in branches:
-        if 'refs/heads/%s' % branch[1] not in local_branches:
-            continue
-        try:
-            status = check_upstream_and_sync(name, workdir, local,
-                                             branch[1], branch[0],
-                                             rbranch=branch[2],
-                                             push_tags=push_tags)
-            ret[branch[1]] = status
-        except BranchNotFoundException, e:
-            ret[branch[1]] = [1, "Branch not found upstream !: %s" % e]
+        status = check_upstream_and_sync(name, workdir, local,
+                                         branch[1], branch[0],
+                                         rbranch=branch[2],
+                                         push_tags=push_tags)
+        if branch[0].find('pkgs.fedoraproject.org') >= 0:
+            # Just for clarify the summary
+            branch_name = "%s (legacy)" % branch[1]
+        else:
+            branch_name = branch[1]
+        ret[branch_name] = status
+
     return ret
 
 
