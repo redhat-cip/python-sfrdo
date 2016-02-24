@@ -384,6 +384,14 @@ def project_create(cmdargs, workdir, rdoinfo):
     pass
 
 
+def replicate_project(cmdargs, workdir, rdoinfo):
+    print "Setup replication for %s" % cmdargs.name
+    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                 'admin', config.adminpass)
+    msf.replicateProjectGithub(
+        cmdargs.name, cmdargs.token, rdoinfo, org="rdo-packages")
+
+
 def add_to_project_groups(name, maintainer):
     print "Add %s to project groups for %s" % (maintainer, name)
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
@@ -760,6 +768,15 @@ def main():
         '--distgit', action='store_true', default=None,
         help='Only act on distgit project branches')
 
+    parser_replicate = subparsers.add_parser(
+        'replicate',
+        help='Setup replication to Github')
+    parser_replicate.add_argument(
+        '--name', type=str, help='Limit to project name')
+    parser_replicate.add_argument(
+        '--token', type=str, default='None',
+        help='Github authentication token')
+
     parser_status = subparsers.add_parser(
         'status',
         help='Status imported project')
@@ -878,6 +895,11 @@ def main():
         for project in projects:
             kargs['cmdargs'].name = project
             project_sync_maints(**kargs)
+    elif args.command == 'replicate':
+        if not (args.name and args.token):
+            print "Provide project name and github token"
+            sys.exit(1)
+        replicate_project(**kargs)
     elif args.command == 'status':
         if not args.type:
             print "Provide the --type options"
