@@ -473,7 +473,9 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
     name = cmdargs.name
 
     mirror_p_jobs_tmpl = {'name': None,
-                          'check': ['tox-validate']}
+                          'check':
+                          ['packstack-validate', 'rpmlint-validate',
+                              'pkg-upgrade-validate', 'delorean-ci']}
     distgit_p_jobs_tmpl = {'name': None,
                            'check': ['pkg-validate', 'delorean-ci']}
 
