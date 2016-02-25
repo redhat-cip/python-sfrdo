@@ -305,10 +305,11 @@ def check_upstream_and_sync(name, workdir, local, branch,
                 if push_tags:
                     git('push', 'local', '--tags')
         except Exception, e:
-            return [1, "Sync failed: %s" % e]
+            return [1, "Sync from %s:%s failed: %s" % (upstream, rbranch, e)]
 
-        return [0, "Sync succeed: %s commits has been synced" % len(difflog)]
-    return [0, "Repo is up to date. Nothing to do."]
+        return [0, "Sync succeed: %s commits synced from %s:%s" % (
+            len(difflog), upstream, rbranch)]
+    return [0, "Repo is up to date compared to %s:%s" % (upstream, rbranch)]
 
 
 def project_import(cmdargs, workdir, rdoinfo):
@@ -950,7 +951,7 @@ def main():
         cmd_ret = 0
         for project, bstatus in final_status.items():
             for branch, status in bstatus.items():
-                print "project %s:%s: %s" % (
+                print "Local branch %s:%s: %s" % (
                     project, branch, status[1])
                 cmd_ret += status[0]
         print "Return %s" % cmd_ret
