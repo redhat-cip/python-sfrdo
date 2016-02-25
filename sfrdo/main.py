@@ -470,16 +470,18 @@ def projects_status(cmdargs, workdir, rdoinfo):
 
 
 def update_config_for_project(cmdargs, workdir, rdoinfo):
-    print "\n=== Update jobs to trigger for project %s" % cmdargs.name
+    print "\n=== Update jobs to trigger for project %s" % (
+        ", ".join(cmdargs.name))
     sfgerrit = config.gerrit_rpmfactory % config.userlogin
-    name = cmdargs.name
 
     mirror_p_jobs_tmpl = {'name': None,
                           'check':
-                          ['packstack-validate', 'rpmlint-validate',
-                              'pkg-upgrade-validate', 'delorean-ci']}
+                          ['tox-validate']}
     distgit_p_jobs_tmpl = {'name': None,
-                           'check': ['pkg-validate', 'delorean-ci']}
+                           'check': ['packstack-validate', 'rpmlint-validate',
+                                     'pkg-upgrade-validate', 'delorean-ci'],
+                           'gate': ['packstack-validate', 'pkg-export'],
+                           }
 
     pdir = os.path.join(workdir, 'config')
     # Clean previous if exist
@@ -492,26 +494,32 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
         git('remote', 'add', 'gerrit', sfgerrit + 'config')
         zuul_projects = yaml.load(
             file("zuul/projects.yaml").read())
-        for pname in (name, name + '-distgit'):
-            # Clean previous if exists
-            for i, p_def in enumerate(zuul_projects['projects']):
-                if p_def['name'] == pname:
-                    zuul_projects['projects'].pop(i)
-            # Add the config entry
-            if pname.endswith('-distgit'):
-                zuul_projects['projects'].append(
-                    deepcopy(distgit_p_jobs_tmpl))
-            else:
-                zuul_projects['projects'].append(
-                    deepcopy(mirror_p_jobs_tmpl))
-            zuul_projects['projects'][-1]['name'] = pname
+
+        for name in cmdargs.name:
+            for pname in (name, name + '-distgit'):
+                # Clean previous if exists
+                for i, p_def in enumerate(zuul_projects['projects']):
+                    if p_def['name'] == pname:
+                        zuul_projects['projects'].pop(i)
+                # Add the config entry
+                if pname.endswith('-distgit'):
+                    zuul_projects['projects'].append(
+                        deepcopy(distgit_p_jobs_tmpl))
+                else:
+                    zuul_projects['projects'].append(
+                        deepcopy(mirror_p_jobs_tmpl))
+                zuul_projects['projects'][-1]['name'] = pname
         file("zuul/projects.yaml", "w").write(
             yaml.safe_dump(zuul_projects, default_flow_style=False))
         ret = git('ls-files', '-o', '-m', '--exclude-standard')
         if ret:
+            if len(cmdargs.name) > 1:
+                cmtmsg = 'Config update for multiple projects'
+            else:
+                cmtmsg = 'Config update for %s' % cmdargs.name[0]
             git('commit', '-a', '--author',
                 '%s <%s>' % (config.username, config.useremail),
-                '-m', 'Config update for %s' % name)
+                '-m', cmtmsg)
             git('review', '-i', '-r', 'gerrit', 'master')
             sha = open(".git/refs/heads/master").read()
             gu = msfutils.GerritSfUtils(config.rpmfactory,
@@ -519,8 +527,7 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
             try:
                 gu.approve_and_wait_for_merge(sha)
             except msfutils.UnableToMergeException, e:
-                print "Config change for %s has not be merged (%s)" % (
-                    name, e)
+                print "Config change for has not be merged (%s)" % e
 
 
 def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
@@ -923,9 +930,8 @@ def main():
         else:
             projects = [args.name]
         print "Update jobs to trigger for projects : %s" % ", ".join(projects)
-        for project in projects:
-            kargs['cmdargs'].name = project
-            update_config_for_project(**kargs)
+        kargs['cmdargs'].name = projects
+        update_config_for_project(**kargs)
     elif args.command == 'sync_repo':
         # This command can be used in a Jenkins job so use WORKSPACE if exists.
         kargs['workdir'] = os.environ.get('WORKSPACE', kargs['workdir'])
