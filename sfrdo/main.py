@@ -84,7 +84,7 @@ def create_baseproject(msf, name, desc):
     print "Create %s" % name
     opts = {'description': desc}
     if not name.endswith("-distgit"):
-        opts['readonly'] = True
+        opts['readonly'] = ''
     msf.createProject(name, opts)
     print "Add %s to core and ptl group for %s" % (
         config.userlogin, name)
