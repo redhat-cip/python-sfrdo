@@ -46,7 +46,8 @@ NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
                   'cloudkitty', 'mistral', 'osprofiler', 'pysaml2',
                   'networking-arista', 'networking-cisco', 'vmware-nsx',
                   'networking-mlnx', 'networking-odl', 'app-catalog-ui',
-                  'UcsSdk', 'cachetools']
+                  'UcsSdk', 'cachetools', 'networking-ovn', 'neutron-lib',
+                  'cisco-ironic-contrib', 'magnum']
 
 
 # g42b3426 is not found upstream so force to do not create

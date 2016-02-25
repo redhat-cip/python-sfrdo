@@ -157,6 +157,15 @@ RDOINFOS_FIXES = {
         'distgit': 'git://github.com/openstack-packages/packstack',
         'rdo-liberty-tag': 'g42b3426',
     },
+    'networking-ovn': {
+        'distgit': 'git://github.com/openstack-packages/python-networking-ovn',
+    },
+    'neutron-lib': {
+        'distgit': 'git://github.com/openstack-packages/python-neutron-lib',
+    },
+    'cisco-ironic-contrib': {
+        'distgit': 'git://github.com/openstack-packages/python-ironic-cisco',
+    },
 }
 
 
