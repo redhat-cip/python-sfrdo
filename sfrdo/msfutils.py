@@ -113,6 +113,14 @@ class ManageSfUtils(Tool):
         if code:
             raise SFManagerException(out)
 
+    def replicateAllProjectsGithub(self, token, rdoinfo,
+                                   org="rdo-packages"):
+        # Get list of all projects available on rpmfactory
+        projects = requests.get('%s/r/projects/?d' % self.url)
+        data = projects.text[4:] # First 4 bytes are garbage
+        for project, _details in json.loads(data).iteritems():
+            self.replicateProjectGithub(project, token, rdoinfo, org)
+
     def replicateProjectGithub(self, project, token,
                                rdoinfo, org="rdo-packages"):
         pkgs = rdoinfo.get('packages')
@@ -125,6 +133,10 @@ class ManageSfUtils(Tool):
                 patches = pkg.get('patches')
                 upstream = pkg.get('upstream')
                 distgit = pkg.get('master-distgit')
+
+        if not distgit and upstream:
+            print ("[WARNING] No details found for %s, skipping" % project)
+            return
 
         key = RSA.generate(4096)
 
