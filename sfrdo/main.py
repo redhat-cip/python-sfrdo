@@ -401,6 +401,13 @@ def replicate_project(cmdargs, workdir, rdoinfo):
         cmdargs.name, cmdargs.token, rdoinfo, org="rdo-packages")
 
 
+def replicate_all_project(cmdargs, workdir, rdoinfo):
+    print "Setup replication for all rpmfactory projects"
+    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                 'admin', config.adminpass)
+    msf.replicateAllProjectsGithub(cmdargs.token, rdoinfo, org="rdo-packages")
+
+
 def add_to_project_groups(name, maintainer):
     print "Add %s to project groups for %s" % (maintainer, name)
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
@@ -924,10 +931,14 @@ def main():
             kargs['cmdargs'].name = project
             project_sync_maints(**kargs)
     elif args.command == 'replicate':
-        if not (args.name and args.token):
-            print "Provide project name and github token"
+        if not args.token:
+            print "Please provide github token"
             sys.exit(1)
-        replicate_project(**kargs)
+        if args.name:
+            replicate_project(**kargs)
+        else:
+            replicate_all_project(**kargs)
+
     elif args.command == 'status':
         if not args.type:
             print "Provide the --type options"
