@@ -41,11 +41,11 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 BL = []
 
 
-NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
+NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk',
                   'mistralclient', 'os-win', 'ironic-lib', 'octavia',
                   'cloudkitty', 'mistral', 'osprofiler', 'pysaml2',
                   'networking-arista', 'networking-cisco', 'vmware-nsx',
-                  'networking-mlnx', 'networking-odl', 'app-catalog-ui',
+                  'networking-mlnx', 'app-catalog-ui',
                   'UcsSdk', 'cachetools', 'networking-ovn', 'neutron-lib',
                   'cisco-ironic-contrib', 'magnum']
 
@@ -540,6 +540,11 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
 def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     (name, distgit, upstream, sfdistgit, maints,
      conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
+
+    in_liberty = True
+    if name in NOT_IN_LIBERTY:
+        in_liberty = False
+
     if rtype == 'distgit':
         name = sfdistgit
 
@@ -570,8 +575,14 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
             # So try to sync from there first.
             # Then check if rdo-liberty branch is found on github (mdistgit)
             # then try to sync from github. /!\
+            print name
             if distgit.find('pkgs.fedoraproject.org') >= 0:
-                branches.extend(((distgit, 'rdo-liberty', 'master'),))
+                if in_liberty:
+                    # Check this above prevents when we request a missing repo
+                    # that not exists on pkgs.fedoraproject.org
+                    branches.extend(((distgit, 'rdo-liberty', 'master'),))
+            # The NOT_IN_LIBERTY list is not fully accurate and sometime
+            # a rdo-liberty branch exists on Github so fetch it if exists.
             branches.extend(((mdistgit, 'rdo-liberty', 'rdo-liberty'),))
 
         branches.extend(((mdistgit, 'rdo-kilo', 'rdo-kilo'),
