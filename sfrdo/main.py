@@ -41,11 +41,11 @@ logging.basicConfig(filename='warns.log', level=logging.DEBUG)
 BL = []
 
 
-NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk', 'dracclient',
+NOT_IN_LIBERTY = ['cloudkittyclient', 'openstacksdk',
                   'mistralclient', 'os-win', 'ironic-lib', 'octavia',
                   'cloudkitty', 'mistral', 'osprofiler', 'pysaml2',
                   'networking-arista', 'networking-cisco', 'vmware-nsx',
-                  'networking-mlnx', 'networking-odl', 'app-catalog-ui',
+                  'networking-mlnx', 'app-catalog-ui',
                   'UcsSdk', 'cachetools', 'networking-ovn', 'neutron-lib',
                   'cisco-ironic-contrib', 'magnum']
 

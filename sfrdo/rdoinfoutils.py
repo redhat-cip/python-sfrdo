@@ -81,20 +81,15 @@ RDOINFOS_FIXES = {
         'distgit': 'git://pkgs.fedoraproject.org/python-glance-store.git',
         'conf': 'client',  # Use the client style (master branch)
     },
-    'swift': {
-        'distgit': 'git://pkgs.fedoraproject.org/openstack-swift.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
     'horizon': {
         'distgit': 'git://github.com/openstack-packages/horizon',
+        'conf': 'client',  # Use the core style rdo-liberty branch)
     },
     'dib-utils': {
         'distgit': 'git://pkgs.fedoraproject.org/dib-utils.git',
         'conf': 'client',  # Use the client style (master branch)
     },
     'tripleo-incubator': {
-        'distgit': 'git://github.com/openstack-packages/tripleo',
-        'conf': 'core',  # Use the core style rdo-liberty branch)
         'rdo-liberty-tag': '7461b01e393931e0f4cf1ff38eadb0755a49d658',
     },
     'os-apply-config': {
@@ -115,10 +110,6 @@ RDOINFOS_FIXES = {
     },
     'os-cloud-config': {
         'distgit': 'git://pkgs.fedoraproject.org/os-cloud-config.git',
-        'conf': 'client',  # Use the client style (master branch)
-    },
-    'zaqar': {
-        'distgit': 'git://pkgs.fedoraproject.org/openstack-zaqar.git',
         'conf': 'client',  # Use the client style (master branch)
     },
     'ironic-python-agent': {
@@ -144,9 +135,6 @@ RDOINFOS_FIXES = {
         'distgit':
             'git://github.com/openstack-packages/python-networking-arista',
     },
-    'horizon': {  # Can be reported
-        'conf': 'client',  # Use the core style rdo-liberty branch)
-    },
     'tempest': {
         'conf': 'client',
         'distgit': 'git://pkgs.fedoraproject.org/tempest.git',
@@ -165,6 +153,37 @@ RDOINFOS_FIXES = {
     },
     'cisco-ironic-contrib': {
         'distgit': 'git://github.com/openstack-packages/python-ironic-cisco',
+    },
+    'mistralclient': {
+        'distgit': 'git://github.com/openstack-packages/python-mistralclient',
+        'conf': 'core',
+    },
+    'dracclient': {
+        'distgit': 'git://github.com/openstack-packages/python-dracclient',
+        'conf': 'core',
+    },
+    'openstacksdk': {
+        'distgit': 'git://github.com/openstack-packages/python-openstacksdk',
+        'conf': 'core',
+    },
+    'cloudkittyclient': {
+        'distgit':
+            'git://github.com/openstack-packages/python-cloudkittyclient',
+        'conf': 'core',
+    },
+    'vmware-nsx': {
+        'distgit':
+            'git://github.com/openstack-packages/python-networking-vmware-nsx',
+        'conf': 'core',
+    },
+    'networking-mlnx': {
+        'distgit':
+            'git://github.com/openstack-packages/python-networking-mlnx',
+        'conf': 'core',
+    },
+    'networking-odl': {
+        'distgit': 'git://github.com/openstack-packages/python-networking-odl',
+        'conf': 'core',
     },
 }
 
