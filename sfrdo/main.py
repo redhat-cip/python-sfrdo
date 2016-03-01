@@ -323,7 +323,7 @@ def check_upstream_and_sync(name, workdir, local, branch,
 def project_import(cmdargs, workdir, rdoinfo):
     print "\n=== Start import ==="
     name, distgit, upstream, \
-        sfdistgit, maints, conf, mdistgit = \
+        sfdistgit, maints, conf, mdistgit, patches = \
         rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
 
     sfgerrit = config.gerrit_rpmfactory % config.userlogin
@@ -394,18 +394,36 @@ def project_create(cmdargs, workdir, rdoinfo):
 
 
 def replicate_project(cmdargs, workdir, rdoinfo):
-    print "Setup replication for %s" % cmdargs.name
+    print "Setup replication for RDO project %s" % cmdargs.name
+    (name, distgit, upstream, sfdistgit, maints,
+     conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(rdoinfo,
+                                                        cmdargs.name)
+
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
-    msf.replicateProjectGithub(
-        cmdargs.name, cmdargs.token, rdoinfo, org="rdo-packages")
 
-
-def replicate_all_project(cmdargs, workdir, rdoinfo):
-    print "Setup replication for all rpmfactory projects"
-    msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
-                                 'admin', config.adminpass)
-    msf.replicateAllProjectsGithub(cmdargs.token, rdoinfo, org="rdo-packages")
+    for repo in (name, sfdistgit):
+        if repo.endswith('-distgit'):
+            print "Setup replication for (mirror) %s" % repo
+            fork = mdistgit
+            fork = fork.replace('git://', 'http://')
+            resp = requests.get(fork)
+            if not resp.ok:
+                print "Unable to find %s" % fork
+                sys.exit(1)
+        else:
+            print "Setup replication for (distgit) %s" % repo
+            fork = patches
+            fork = fork.replace('git://', 'http://')
+            resp = requests.get(fork)
+            if not resp.ok:
+                print "Unable to find %s" % fork
+                fork = upstream.replace('git://git.openstack.org/',
+                                        'http://github.com/')
+                print "Fallback fork from %s" % fork
+        print "Github repo creation is forked from %s" % fork
+        msf.replicateProjectGithub(
+            repo, fork, cmdargs.token, org="rdo-packages")
 
 
 def add_to_project_groups(name, maintainer):
@@ -424,7 +442,7 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
     print "\n=== Sync maintainer in project " + \
           "%s groups + service user ===" % cmdargs.name
     (name, distgit, upstream, sfdistgit, maints,
-     conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo,
+     conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(rdoinfo,
                                                         cmdargs.name)
 
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
@@ -554,7 +572,7 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
 
 def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     (name, distgit, upstream, sfdistgit, maints,
-     conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
+     conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
 
     in_liberty = True
     if name in NOT_IN_LIBERTY:
@@ -936,8 +954,6 @@ def main():
             sys.exit(1)
         if args.name:
             replicate_project(**kargs)
-        else:
-            replicate_all_project(**kargs)
 
     elif args.command == 'status':
         if not args.type:
