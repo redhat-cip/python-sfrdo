@@ -113,31 +113,11 @@ class ManageSfUtils(Tool):
         if code:
             raise SFManagerException(out)
 
-    def replicateAllProjectsGithub(self, token, rdoinfo,
-                                   org="rdo-packages"):
-        # Get list of all projects available on rpmfactory
-        projects = requests.get('%s/r/projects/?d' % self.url)
-        data = projects.text[4:]  # First 4 bytes are garbage
-        for project, _details in json.loads(data).iteritems():
-            self.replicateProjectGithub(project, token, rdoinfo, org)
+    def replicateProjectGithub(self, repo, fork, token,
+                               org="rdo-packages",
+                               skip_github_creation=False):
 
-    def replicateProjectGithub(self, project, token,
-                               rdoinfo, org="rdo-packages"):
-        pkgs = rdoinfo.get('packages')
-
-        basename = project.replace('-distgit', '')
-        distgit = upstream = None
-
-        for pkg in pkgs:
-            if pkg.get('project') == basename:
-                patches = pkg.get('patches')
-                upstream = pkg.get('upstream')
-                distgit = pkg.get('master-distgit')
-
-        if not distgit and upstream:
-            print ("[WARNING] No details found for %s, skipping" % project)
-            return
-
+        print "Create key pair for the replication on github ..."
         key = RSA.generate(4096)
 
         privkey = tempfile.NamedTemporaryFile(delete=False)
@@ -147,30 +127,44 @@ class ManageSfUtils(Tool):
         pubkey = tempfile.NamedTemporaryFile(delete=False)
         pubkey.write(key.publickey().exportKey('OpenSSH'))
         pubkey.close()
-
-        if project.endswith('-distgit'):
-            origin = distgit.replace('//git.openstack.org/', '//github.com/')
-        else:
-            origin = patches.replace('//git.openstack.org/', '//github.com/')
-            origin = origin.replace('git://', 'http://')
-            resp = requests.get(origin)
-            if not resp.ok:
-                origin = upstream.replace('git://git.openstack.org/',
-                                          'http://github.com/')
+        print "Done."
 
         cmds = []
-        cmds.append(" --github-token %s github fork-repo --origin %s --name %s --org %s" % (token, origin, project, org))  # noqa
-        cmds.append(" --github-token %s github deploy-key -n %s -o %s --keyfile %s" % (token, project, org, pubkey.name))  # noqa
-        cmds.append(" replication configure add --section %s url 'git@alias_gh_%s:%s/${name}.git'" % (project, project, org))  # noqa
-        cmds.append(" replication configure add --section %s projects %s" % (project, project))  # noqa
-        cmds.append(" gerrit_ssh_config add --alias alias_gh_%s --key %s --hostname github.com" % (project, privkey.name))  # noqa
-        cmds.append(" replication trigger")
+        if not skip_github_creation:
+            cmds.append(
+                " --github-token %s github fork-repo "
+                "--fork %s --name %s --org %s" % (token, fork, repo, org))
+        else:
+            print "Skip github repo creation by fork. Just configure" \
+                  " the replication."
+        cmds.append(
+            " --github-token %s github deploy-key "
+            "-n %s -o %s --keyfile %s" % (token, repo, org, pubkey.name))
+        # Clean first to avoid duplicated items
+        cmds.append(
+            " replication configure remove --section %s" % repo)
+        cmds.append(
+            " replication configure add --section %s url "
+            "'git@alias_gh_%s:%s/${name}.git'" % (repo, repo, org))
+        cmds.append(
+            " replication configure add --section %s "
+            "projects %s" % (repo, repo))
+        cmds.append(" gerrit_ssh_config add --alias alias_gh_%s "
+                    "--key %s --hostname github.com" % (repo, privkey.name))
 
         for cmd in cmds:
+            print self.base_cmd + cmd
             out, code = self.exe(self.base_cmd + cmd)
             if code:
                 raise SFManagerException(out)
-            time.sleep(15)
+            time.sleep(0.5)
+
+        time.sleep(15)
+        cmd = "%s replication trigger" % self.base_cmd
+        print cmd
+        out, code = self.exe(cmd)
+        if code:
+            raise SFManagerException(out)
 
     def addUsertoProjectGroups(self, project, email, groups):
         cmd = self.base_cmd + " membership add --project %s " % project
