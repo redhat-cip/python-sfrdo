@@ -241,9 +241,8 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
     name = infos['project']
     maints = infos['maintainers']
     sfdistgit = "%s-distgit" % name
-    patches = infos['patches']
     return (name, distgit, upstream,
-            sfdistgit, maints, conf, mdistgit, patches)
+            sfdistgit, maints, conf, mdistgit)
 
 
 def display_details(cmdargs, rdoinfo, workdir=None):

@@ -396,7 +396,7 @@ def project_create(cmdargs, workdir, rdoinfo):
 def replicate_project(cmdargs, workdir, rdoinfo):
     print "Setup replication for RDO project %s" % cmdargs.name
     (name, distgit, upstream, sfdistgit, maints,
-     conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(
+     conf, mdistgit) = rdoinfoutils.fetch_project_infos(
          rdoinfo, cmdargs.name)
 
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
@@ -405,33 +405,45 @@ def replicate_project(cmdargs, workdir, rdoinfo):
     for repo in (sfdistgit, name):
         skip_github_creation = False
         if repo.endswith('-distgit'):
-            print "Setup replication for (mirror) %s" % repo
-            fork = mdistgit
-            fork = fork.replace('git://', 'http://')
-            resp = requests.get(fork)
-            if not resp.ok:
-                print "Unable to find %s" % fork
-                sys.exit(1)
-        else:
             print "Setup replication for (distgit) %s" % repo
-            fork = patches
-            fork = fork.replace('git://', 'http://')
+            resp = requests.get("https://github.com/rdo-packages/%s" % repo)
+            if resp.ok:
+                print "%s already created on rdo-packages. " \
+                      "Skip repo creation." % repo
+                skip_github_creation = True
+            if not (skip_github_creation and cmdargs.skip_existing):
+                msf.replicateProjectGithub(
+                    repo, None, cmdargs.token,
+                    org="rdo-packages",
+                    skip_github_creation=skip_github_creation)
+            else:
+                print "Full skip !"
+        else:
+            print "Setup replication for (mirror) %s" % repo
+            fork = upstream.replace('git.openstack.org/',
+                                    'github.com/')
+            fork = fork.replace('git://',
+                                'http://')
+            fork = fork.rstrip('.git')
+            print "Check %s exists on github" % fork
             resp = requests.get(fork)
             if not resp.ok:
-                print "Unable to find %s" % fork
-                fork = upstream.replace('git://git.openstack.org/',
-                                        'http://github.com/')
-                print "Fallback fork from %s" % fork
-        print "Github repo creation is forked from %s" % fork
-        resp = requests.get("https://github.com/rdo-packages/%s" % repo)
-        if resp.ok:
-            print "%s already created on rdo-packages. " \
-                  "Skip repo creation." % repo
-            skip_github_creation = True
-        msf.replicateProjectGithub(
-            repo, fork, cmdargs.token,
-            org="rdo-packages",
-            skip_github_creation=skip_github_creation)
+                print "Unable to find forked source %s" % fork
+                sys.exit(1)
+            print "Github repo creation is forked from %s" % fork
+            resp = requests.get("https://github.com/rdo-packages/%s" % repo)
+            if resp.ok:
+                print "%s already created on rdo-packages. " \
+                      "Skip repo creation." % repo
+                skip_github_creation = True
+            if not (skip_github_creation and cmdargs.skip_existing):
+                msf.replicateProjectGithub(
+                    repo, fork, cmdargs.token,
+                    org="rdo-packages",
+                    skip_github_creation=skip_github_creation,
+                    need_fork=True)
+            else:
+                print "Full skip !"
 
 
 def add_to_project_groups(name, maintainer):
@@ -450,8 +462,7 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
     print "\n=== Sync maintainer in project " + \
           "%s groups + service user ===" % cmdargs.name
     (name, distgit, upstream, sfdistgit, maints,
-     conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(
-         rdoinfo, cmdargs.name)
+     conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
 
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
@@ -580,7 +591,7 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
 
 def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     (name, distgit, upstream, sfdistgit, maints,
-     conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(
+     conf, mdistgit) = rdoinfoutils.fetch_project_infos(
          rdoinfo, cmdargs.name)
 
     in_liberty = True
@@ -617,7 +628,6 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
             # So try to sync from there first.
             # Then check if rdo-liberty branch is found on github (mdistgit)
             # then try to sync from github. /!\
-            print name
             if distgit.find('pkgs.fedoraproject.org') >= 0:
                 if in_liberty:
                     # Check this above prevents when we request a missing repo
@@ -838,6 +848,12 @@ def main():
     parser_replicate.add_argument(
         '--token', type=str, default='None',
         help='Github authentication token')
+    parser_replicate.add_argument(
+        '--type', type=str, default=None,
+        help='Limit replication config of type (core, client, lib)')
+    parser_replicate.add_argument(
+        '--skip-existing', action="store_true", default=None,
+        help='If project repos exists on Github then skip')
 
     parser_status = subparsers.add_parser(
         'status',
@@ -961,9 +977,16 @@ def main():
         if not args.token:
             print "Please provide github token"
             sys.exit(1)
-        if args.name:
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        print "Setup github replication for projects : %s" % \
+            ", ".join(projects)
+        for project in projects:
+            kargs['cmdargs'].name = project
             replicate_project(**kargs)
-
     elif args.command == 'status':
         if not args.type:
             print "Provide the --type options"
