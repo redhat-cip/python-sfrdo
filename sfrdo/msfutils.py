@@ -115,7 +115,8 @@ class ManageSfUtils(Tool):
 
     def replicateProjectGithub(self, repo, fork, token,
                                org="rdo-packages",
-                               skip_github_creation=False):
+                               skip_github_creation=False,
+                               need_fork=False):
 
         print "Create key pair for the replication on github ..."
         key = RSA.generate(4096)
@@ -131,9 +132,14 @@ class ManageSfUtils(Tool):
 
         cmds = []
         if not skip_github_creation:
-            cmds.append(
-                " --github-token %s github fork-repo "
-                "--fork %s --name %s --org %s" % (token, fork, repo, org))
+            if need_fork:
+                cmds.append(
+                    " --github-token %s github fork-repo "
+                    "--fork %s --name %s --org %s" % (token, fork, repo, org))
+            else:
+                cmds.append(
+                    " --github-token %s github create-repo "
+                    "--name %s --org %s" % (token, repo, org))
         else:
             print "Skip github repo creation by fork. Just configure" \
                   " the replication."
