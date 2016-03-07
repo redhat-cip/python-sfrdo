@@ -18,16 +18,20 @@ import os
 import sys
 import json
 import yaml
+import shlex
 import shutil
 import logging
 import requests
 import tempfile
 import argparse
+import subprocess
 
 from rdopkg.helpers import cdir
 from rdopkg.utils.cmd import git
 
 from copy import deepcopy
+
+from rpmUtils.miscutils import splitFilename
 
 from sfrdo import config
 from sfrdo import msfutils
@@ -130,6 +134,8 @@ def fetch_upstream_tag_name():
 
 
 def is_branches_exists(expected_remotes_branches):
+    """ Expect a local copy of the git repo
+    """
     remote_branches = git('branch', '-a').split('\n')
     for remote, branch in expected_remotes_branches:
         exists = False
@@ -139,6 +145,17 @@ def is_branches_exists(expected_remotes_branches):
                 exists = True
         if not exists:
             raise BranchNotFoundException("%s does not exist" % bn)
+
+
+def is_branch_exists(upstream, branch):
+    """ Only use git ls-remote
+    """
+    try:
+        [l.split()[0] for l in git('ls-remote', upstream).split('\n')
+         if l.endswith('refs/heads/%s' % branch)][0]
+    except IndexError:
+        return False
+    return True
 
 
 def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
@@ -219,6 +236,136 @@ def import_mirror(msf, sfgerrit, name, upstream, workdir, in_liberty=True):
         # sync and push to rpmfactory
         sync_and_push_branch('upstream', 'gerrit', 'master')
         git('push', 'gerrit', '--tags')
+
+
+def check_patches_branch_version(distgit, mirror, distgit_branch,
+                                 patches_branch, workdir=None):
+    """ This function look at the upstream version specified in the
+    .spec file and compare it with the corresponding -patches branch.
+    """
+    assert workdir is not None
+    with cdir(workdir):
+        git('clone', 'http://%s/r/%s' % (config.rpmfactory, distgit),
+            distgit)
+    with cdir(os.path.join(workdir, distgit)):
+        is_branches_exists([('origin', distgit_branch)])
+        git('checkout', distgit_branch)
+        version = fetch_upstream_tag_name()
+        print "Upstream version used in the spec is %s" % version
+    with cdir(workdir):
+        git('clone', 'http://%s/r/%s' % (config.rpmfactory, mirror),
+            mirror)
+    with cdir(os.path.join(workdir, mirror)):
+        version_sha = git('--no-pager', 'log', '-1', '--format="%H"', version)
+        print "Upstream version used in the spec is %s (%s)" % (
+              version, version_sha)
+        is_branches_exists([('origin', patches_branch)])
+        patches_branch_sha = git('--no-pager', 'log', '-1', '--format="%H"',
+                                 'origin/' + patches_branch)
+        print "%s head is %s" % (patches_branch, patches_branch_sha)
+    print "%s is %s synchronized" % (
+        patches_branch,
+        'WELL' if version_sha == patches_branch_sha else 'NOT')
+
+
+def project_sync_gp_distgit(cmdargs, workdir, rdoinfo):
+    print "Workdir is %s" % workdir
+    name = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)[0]
+    check_patches_branch_version('%s-distgit' % name, name,
+                                 'rdo-liberty', 'liberty-patches',
+                                 workdir=workdir)
+
+
+def get_repo_infos(repo='openstack-liberty'):
+    cmd = shlex.split('yum --disablerepo=* --enablerepo=%s list available' % (
+                      repo))
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output, _ = p.communicate()
+    if p.returncode:
+        raise Exception("Unable to call Yum (err: %s)" % output)
+    else:
+        infos = dict([(line.split()[0], line.split()[1])
+                     for line in output.split('\n') if
+                     len(line.split()) >= 2])
+    return infos
+
+
+def project_check_distgit_branch(cmdargs, workdir, rdoinfo):
+    def get_spec_infos(sfdistgit, distgit_branch):
+        with cdir(workdir):
+            git('clone', 'http://%s/r/%s' % (config.rpmfactory, sfdistgit),
+                sfdistgit)
+        with cdir(os.path.join(workdir, sfdistgit)):
+            is_branches_exists([('origin', distgit_branch)])
+            git('checkout', distgit_branch)
+            p = subprocess.Popen('rpm -q --specfile *.spec',
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, shell=True)
+            output, _ = p.communicate()
+            if p.returncode:
+                print 'Error calling rpm -q on the spec file (%s)' % (output)
+                return 'specfile err', 'specfile err'
+            filename = output.split('\n')[:-1][-1]
+            name = splitFilename(filename)[0]
+            try:
+                key = [key for key in repo_infos if
+                       key.startswith(name + '.') or
+                       key.startswith(name + '-')][0]
+                repo_version = repo_infos[key]
+            except IndexError:
+                if not name.startswith('python'):
+                    repo_version = 'Not found in repo'
+                try:
+                    # Workaround to autorenaming in spec
+                    name = name.replace('python', 'python2')
+                    key = [key for key in repo_infos if
+                           key.startswith(name + '.') or
+                           key.startswith(name + '-')][0]
+                    repo_version = repo_infos[key]
+                except IndexError:
+                    repo_version = 'Not found in repo'
+            return fetch_upstream_tag_name(), repo_version
+    status = []
+    repo_infos = get_repo_infos()
+    for project in cmdargs.name:
+        select = [pkg for pkg in rdoinfo['packages']
+                  if pkg['project'] == project][0]
+        mdistgit = select['master-distgit']
+        sfdistgit = "%s-distgit" % select['project']
+        conf = select.get('conf', None)
+        # Check on the distgit (RPMFactory)
+        on_rpmf = is_branch_exists('http://%s/r/%s' % (
+                                   config.rpmfactory, sfdistgit),
+                                   'rdo-liberty')
+        if on_rpmf:
+            upstver_in_spec, pkg_version = get_spec_infos(sfdistgit,
+                                                          'rdo-liberty')
+        else:
+            upstver_in_spec = 'N/A'
+            pkg_version = 'N/A'
+        # Check on the master distgit (Github)
+        on_github = is_branch_exists(mdistgit, 'rdo-liberty')
+        if on_rpmf and not on_github:
+            on_rpmf = 'True (but from fedora master)'
+        cmt = ""
+        if upstver_in_spec not in pkg_version:
+            cmt = "Versions mismatch"
+        if on_github and pkg_version == 'Not found in repo':
+            cmt = "In liberty but not in repo"
+        if not on_github and not on_rpmf:
+            cmt = "Not in liberty"
+        if not on_github and on_rpmf and pkg_version != 'Not found in repo':
+            cmt = "rdo-liberty br missing"
+            if upstver_in_spec not in pkg_version:
+                cmt += " (Versions mismatch)"
+        status.append((mdistgit.split('/')[-1],
+                      conf,
+                      on_github,
+                      on_rpmf,
+                      upstver_in_spec,
+                      pkg_version,
+                      cmt))
+    return status
 
 
 def set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
@@ -390,7 +537,7 @@ def project_import(cmdargs, workdir, rdoinfo):
 
 
 def project_create(cmdargs, workdir, rdoinfo):
-    pass
+    raise NotImplemented
 
 
 def replicate_project(cmdargs, workdir, rdoinfo):
@@ -789,7 +936,8 @@ def main():
 
     parser_import = subparsers.add_parser(
         'import',
-        help='Import an existing RDO project (need admin creds)')
+        help='Import an existing RDO project (need admin creds) '
+             '[migration helper]')
     parser_import.add_argument('--name', type=str, help='project name')
     parser_import.add_argument(
         '--type', type=str, default=None,
@@ -838,7 +986,22 @@ def main():
         help='Use your identity to sync (set in config.py)')
     parser_sync_repo.add_argument(
         '--distgit', action='store_true', default=None,
-        help='Only act on distgit project branches')
+        help='Only act on distgit project branches '
+             '[migration helper]')
+
+    parser_sync_gp_distgit = subparsers.add_parser(
+        'sync_gp_distgit',
+        help='Sync patches from distgit. Detect version in spec, '
+             'reset -patches branch, update patches chain if needed '
+             '[migration helper]')
+    parser_sync_gp_distgit.add_argument(
+        '--name', type=str, help='Limit to project name')
+    parser_sync_gp_distgit.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to projects of type (core, client, lib)')
+    parser_sync_gp_distgit.add_argument(
+        '--user', action='store_true', default=None,
+        help='Use your identity to sync (set in config.py)')
 
     parser_replicate = subparsers.add_parser(
         'replicate',
@@ -906,7 +1069,8 @@ def main():
 
     subparsers.add_parser(
         'ghuser',
-        help='Find username based on Github')
+        help='Find username based on Github '
+             '[migration helper]')
 
     parser_project_members = subparsers.add_parser(
         'project_members',
@@ -931,7 +1095,17 @@ def main():
 
     subparsers.add_parser(
         'pre-register-rdo-users',
-        help='This command pre register RDO user (from rdoinfo)')
+        help='This command pre register RDO user (from rdoinfo) '
+             '[migration helper]')
+
+    parser_check_distgit_branch = subparsers.add_parser(
+        'check_distgit_branch',
+        help='Check to fill')
+    parser_check_distgit_branch.add_argument(
+        '--name', type=str, help='project name')
+    parser_check_distgit_branch.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to imported projects of type (core, client, lib)')
 
     args = parser.parse_args()
     rdoinfo = rdoinfoutils.fetch_rdoinfo()
@@ -1061,6 +1235,47 @@ def main():
                 cmd_ret += status[0]
         print "Return %s" % cmd_ret
         sys.exit(cmd_ret)
+    elif args.command == 'sync_gp_distgit':
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        print "Check -patches branch for projects : %s" % ", ".join(projects)
+        for project in projects:
+            kargs['cmdargs'].name = project
+            project_sync_gp_distgit(**kargs)
+    elif args.command == 'check_distgit_branch':
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+        else:
+            projects = [args.name]
+        print "Check rdo-liberty branch exists for projects : %s" % (
+              ", ".join(projects))
+        kargs['cmdargs'].name = projects
+        status = project_check_distgit_branch(**kargs)
+
+        line = "%(project)30s %(type)10s " + \
+               "%(is_rdo_liberty_exists_mdistgit)20s " + \
+               "%(is_rdo_liberty_exists_sf)30s %(version_in_spec)20s " + \
+               "%(version_in_repo)50s %(comment)45s"
+        print line % {'project': 'Project',
+                      'type': 'type',
+                      'is_rdo_liberty_exists_mdistgit': 'br on Github ?',
+                      'is_rdo_liberty_exists_sf': 'br on RPMfactory ?',
+                      'version_in_spec': 'Ver in specfile',
+                      'version_in_repo': 'Ver in repo',
+                      'comment': 'Comment'}
+        print '-' * 211
+        for state in status:
+            print line % {'project': state[0],
+                          'type': state[1],
+                          'is_rdo_liberty_exists_mdistgit': state[2],
+                          'is_rdo_liberty_exists_sf': state[3],
+                          'version_in_spec': state[4],
+                          'version_in_repo': state[5],
+                          'comment': state[6]}
+
     elif args.command == 'pre_register_rdo_users':
         for k, v in rdoinfoutils.RDOINFOS_USERS_FIXES.items():
             print "Process: %s %s" % (k, v)

@@ -5,7 +5,7 @@ Hacking
 -------
 
 ```python
-virtualenv ../sfrdo-venv
+virtualenv --system-site-packages ../sfrdo-venv
 . ../sfrdo-venv/bin/activate
 pip install -r requirements.txt
 python setup.py develop

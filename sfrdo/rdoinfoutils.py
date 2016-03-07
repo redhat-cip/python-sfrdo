@@ -28,8 +28,8 @@ RDOINFOS_USERS_FIXES = {
     'fpercoco@redhat.com': ('flaper87', 'flaper87@flaper87.org'),
     'zaitcev@redhat.com': ('zaitcev', 'ota4250258078e9638@kotori.zaitcev.us'),
     'greg.swift@rackspace.net': ('gregswift', 'xaeth@fedoraproject.org'),
-    'gchamoul@redhat.com':
-        ('strider', 'strider@rpmfactory.beta.rdoproject.org'),
+    'gchamoul@redhat.com': (
+        'strider', 'strider@rpmfactory.beta.rdoproject.org'),
     'jprovazn@redhat.com': ('jprovaznik', 'jan.provaznik@gmail.com'),
     'dtantsur@redhat.com': ('dtantsur', 'dtantsur@redhat.com'),
     'dmellado@redhat.com': ('danielmellado', 'danielmelladoarea@gmail.com'),
@@ -247,8 +247,8 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
 
 def display_details(cmdargs, rdoinfo, workdir=None):
     name, distgit, upstream, \
-        sfdistgit, maintsi, conf, \
-        mdistgit = fetch_project_infos(rdoinfo, cmdargs.name)
+        sfdistgit, maints, conf, mdistgit, patches = \
+        fetch_project_infos(rdoinfo, cmdargs.name)
     print "=== Details ==="
     print "Project name is: %s" % name
     print "Project type is: %s" % conf
