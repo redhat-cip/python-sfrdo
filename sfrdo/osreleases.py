@@ -98,8 +98,8 @@ def get_projects_status(sf_url, user, release,
         for project in infos.keys():
             try:
                 (name, distgit, upstream, sfdistgit, maints,
-                 conf, mdistgit) = rdoinfoutils.fetch_project_infos(rdoinfo,
-                                                                    project)
+                 conf, mdistgit, patches) = rdoinfoutils.fetch_project_infos(
+                    rdoinfo, project)
             except Exception as e:
                 print "Skipping %s: %s" % (project, e)
                 missing_from_rdo[project] = os_git_root + repos.get(project)
