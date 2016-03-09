@@ -27,6 +27,7 @@ import argparse
 import subprocess
 
 from rdopkg.helpers import cdir
+from rdopkg.helpers import setenv
 from rdopkg.utils.cmd import git
 
 from copy import deepcopy
@@ -238,10 +239,12 @@ def import_mirror(msf, sfgerrit, name, upstream, workdir, in_liberty=True):
         git('push', 'gerrit', '--tags')
 
 
-def check_patches_branch_version(distgit, mirror, distgit_branch,
-                                 patches_branch, workdir=None):
+def update_patches_branch_and_reviews(distgit, mirror, distgit_branch,
+                                      patches_branch, workdir=None):
     """ This function look at the upstream version specified in the
     .spec file and compare it with the corresponding -patches branch.
+    If outdated then -patches branch is reset at the right SHA. If
+    distgit patches exists then they are published as gerrit changes.
     """
     assert workdir is not None
     with cdir(workdir):
@@ -250,30 +253,62 @@ def check_patches_branch_version(distgit, mirror, distgit_branch,
     with cdir(os.path.join(workdir, distgit)):
         is_branches_exists([('origin', distgit_branch)])
         git('checkout', distgit_branch)
-        version = fetch_upstream_tag_name()
+        # Fetch upstream tag based on the spec file
+        name = mirror
+        if name in rdoinfoutils.RDOINFOS_FIXES and \
+           'rdo-liberty-tag' in rdoinfoutils.RDOINFOS_FIXES[name]:
+            # Overwrite spec
+            version = rdoinfoutils.RDOINFOS_FIXES[name]['rdo-liberty-tag']
+        else:
+            version = fetch_upstream_tag_name()
+        flat_patches = list(fetch_flat_patches(mirror))
         print "Upstream version used in the spec is %s" % version
+        print "%s distgit patches detected" % len(flat_patches)
     with cdir(workdir):
         git('clone', 'http://%s/r/%s' % (config.rpmfactory, mirror),
             mirror)
     with cdir(os.path.join(workdir, mirror)):
-        version_sha = git('--no-pager', 'log', '-1', '--format="%H"', version)
+        version_sha = git('--no-pager', 'log', '-1', '--format=%H', version)
         print "Upstream version used in the spec is %s (%s)" % (
               version, version_sha)
         is_branches_exists([('origin', patches_branch)])
-        patches_branch_sha = git('--no-pager', 'log', '-1', '--format="%H"',
+        patches_branch_sha = git('--no-pager', 'log', '-1', '--format=%H',
                                  'origin/' + patches_branch)
         print "%s head is %s" % (patches_branch, patches_branch_sha)
-    print "%s is %s synchronized" % (
-        patches_branch,
-        'WELL' if version_sha == patches_branch_sha else 'NOT')
+        git('remote', 'add', 'gerrit', 'ssh://%s@%s:29418/%s' %
+            (config.service_user_name, config.rpmfactory, mirror))
+        git('checkout', patches_branch)
+        if version_sha != patches_branch_sha:
+            print "%s branch need an update to %s" % (patches_branch,
+                                                      version_sha)
+            git('reset', '--hard', version_sha)
+            git('push', '-f', 'gerrit', patches_branch)
+        else:
+            print "%s branch is up to date" % patches_branch
+        if flat_patches:
+            print "Apply detected patches (%s)" % len(flat_patches)
+            flat_patches.sort()
+            for n, patch in enumerate(flat_patches):
+                print "-> Apply patch : %s" % patch
+                git('checkout', '-B', '%s_patch-%s' % (mirror, n))
+                git('am', os.path.join(workdir, distgit, patch))
+                email, name = git('--no-pager', 'log', '--oneline',
+                                  '--format="%ae|%an"',
+                                  'HEAD^1..HEAD').split('|')
+                with setenv(GIT_COMMITTER_NAME='Bender RPM Factory',
+                            GIT_AUTHOR_NAME=name,
+                            GIT_AUTHOR_EMAIL=email,
+                            GIT_COMMITTER_EMAIL=config.service_user_mail):
+                    git('commit', '--amend', '--reset-author', '-C', 'HEAD')
+                    git('review', '-i', '-y', 'liberty-patches')
 
 
 def project_sync_gp_distgit(cmdargs, workdir, rdoinfo):
     print "Workdir is %s" % workdir
     name = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)[0]
-    check_patches_branch_version('%s-distgit' % name, name,
-                                 'rdo-liberty', 'liberty-patches',
-                                 workdir=workdir)
+    update_patches_branch_and_reviews('%s-distgit' % name, name,
+                                      'rdo-liberty', 'liberty-patches',
+                                      workdir=workdir)
 
 
 def get_repo_infos(repo='openstack-liberty'):
@@ -544,7 +579,7 @@ def replicate_project(cmdargs, workdir, rdoinfo):
     print "Setup replication for RDO project %s" % cmdargs.name
     (name, distgit, upstream, sfdistgit, maints,
      conf, mdistgit) = rdoinfoutils.fetch_project_infos(
-         rdoinfo, cmdargs.name)
+        rdoinfo, cmdargs.name)
 
     msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
                                  'admin', config.adminpass)
@@ -739,7 +774,7 @@ def update_config_for_project(cmdargs, workdir, rdoinfo):
 def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     (name, distgit, upstream, sfdistgit, maints,
      conf, mdistgit) = rdoinfoutils.fetch_project_infos(
-         rdoinfo, cmdargs.name)
+        rdoinfo, cmdargs.name)
 
     in_liberty = True
     if name in NOT_IN_LIBERTY:
@@ -1100,7 +1135,7 @@ def main():
 
     parser_check_distgit_branch = subparsers.add_parser(
         'check_distgit_branch',
-        help='Check to fill')
+        help='Display status (upstream version vs RPM repo version)')
     parser_check_distgit_branch.add_argument(
         '--name', type=str, help='project name')
     parser_check_distgit_branch.add_argument(
