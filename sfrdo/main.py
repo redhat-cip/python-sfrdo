@@ -32,7 +32,10 @@ from rdopkg.utils.cmd import git
 
 from copy import deepcopy
 
-from rpmUtils.miscutils import splitFilename
+try:
+    from rpmUtils.miscutils import splitFilename
+except:
+    pass
 
 from sfrdo import config
 from sfrdo import msfutils
@@ -960,6 +963,51 @@ def create_stable_and_patches_branches(cmdargs):
         print r
 
 
+def update_mirror_acls(cmdargs, workdir, rdoinfo):
+    """ Helper to set ACLs in meta/config of a mirror project
+    Here we reset mirror project ACLs to be read only (no possibility
+    to merge reviews)
+    """
+    assert workdir is not None
+    name = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)[0]
+    with cdir(workdir):
+        git('init', name)
+    with cdir(os.path.join(workdir, name)):
+        git('remote', 'add', 'gerrit', 'ssh://%s@%s:29418/%s' %
+            (config.service_user_name, config.rpmfactory, name))
+        git('fetch', 'gerrit', 'refs/meta/config:meta/config')
+        git('checkout', 'meta/config')
+        git('config', '-f', 'project.config', '--unset-all',
+            'access.refs/heads/*.label-Verified')
+        git('config', '-f', 'project.config', '--add',
+            'access.refs/heads/*.label-Verified',
+            '-2..+0 group %s-ptl' % name)
+        git('config', '-f', 'project.config', '--unset-all',
+            'access.refs/heads/*.label-Workflow')
+        git('config', '-f', 'project.config', '--add',
+            'access.refs/heads/*.label-Workflow',
+            '-1..+0 group %s-ptl' % name)
+        git('config', '-f', 'project.config', '--add',
+            'access.refs/heads/*.label-Workflow',
+            '-1..+0 group %s-core' % name)
+        git('config', '-f', 'project.config', '--add',
+            'access.refs/heads/*.label-Workflow',
+            '-1..+0 group Registered Users')
+        if 'project.config' in git('ls-files',
+                                   '-o',
+                                   '-m',
+                                   '--exclude-standard').split('\n'):
+            git('add', 'project.config')
+            with setenv(GIT_COMMITTER_NAME='Bender RPM Factory',
+                        GIT_AUTHOR_NAME='Bender RPM Factory',
+                        GIT_AUTHOR_EMAIL=config.service_user_mail,
+                        GIT_COMMITTER_EMAIL=config.service_user_mail):
+                git('commit', '-m', 'Set ACLs readonly')
+            git('push', 'gerrit', 'meta/config:meta/config')
+        else:
+            print "Skipped as already setup"
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -1142,6 +1190,15 @@ def main():
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
 
+    parser_update_acls_mirror = subparsers.add_parser(
+        'update_acls_mirror',
+        help='Set ACLs for mirror projects')
+    parser_update_acls_mirror.add_argument(
+        '--name', type=str, help='project name')
+    parser_update_acls_mirror.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to imported projects of type (core, client, lib)')
+
     args = parser.parse_args()
     rdoinfo = rdoinfoutils.fetch_rdoinfo()
     if not args.workdir:
@@ -1280,6 +1337,16 @@ def main():
         for project in projects:
             kargs['cmdargs'].name = project
             project_sync_gp_distgit(**kargs)
+    elif args.command == "update_acls_mirror":
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        print "Update ACLs for mirror projects: %s" % ", ".join(projects)
+        for project in projects:
+            kargs['cmdargs'].name = project
+            update_mirror_acls(**kargs)
     elif args.command == 'check_distgit_branch':
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
