@@ -1008,6 +1008,25 @@ def update_mirror_acls(cmdargs, workdir, rdoinfo):
             print "Skipped as already setup"
 
 
+def update_groups_inc_proven(cmdargs, workdir, rdoinfo):
+    """ Helper to add rdoprovenpackagers group to
+    all rdo project repos ptl group.
+    """
+    name = rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)[0]
+    distgit = name + '-distgit'
+    to_include_id = msfutils.get_group_id(config.rpmfactory, 'admin',
+                                          config.adminpass,
+                                          'rdo-provenpackagers')
+    for repo in (name, distgit):
+        print "Add rdo-provenpackagers in %s" % repo
+        in_id = msfutils.get_group_id(config.rpmfactory, 'admin',
+                                      config.adminpass, repo + '-ptl')
+        # Add rdo-provenpackagers to the ptl group
+        msfutils.add_group_in_gerrit_group(config.rpmfactory, 'admin',
+                                           config.adminpass, in_id,
+                                           to_include_id)
+
+
 def main():
     parser = argparse.ArgumentParser(prog='sfrdo')
     parser.add_argument('--workdir', type=str, help='helper option')
@@ -1203,6 +1222,15 @@ def main():
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
 
+    parser_set_rdo_proven_packagers = subparsers.add_parser(
+        'set_rdo_proven_packagers',
+        help='Add rdoprovenpackagers group in ptl groups')
+    parser_set_rdo_proven_packagers.add_argument(
+        '--name', type=str, help='project name')
+    parser_set_rdo_proven_packagers.add_argument(
+        '--type', type=str, default=None,
+        help='Limit to imported projects of type (core, client, lib)')
+
     args = parser.parse_args()
     rdoinfo = rdoinfoutils.fetch_rdoinfo()
     if not args.workdir:
@@ -1356,6 +1384,17 @@ def main():
         for project in projects:
             kargs['cmdargs'].name = project
             update_mirror_acls(**kargs)
+    elif args.command == "set_rdo_proven_packagers":
+        if args.type:
+            projects = fetch_all_project_type(rdoinfo, args.type)
+            projects = get_project_status(projects, 2)
+        else:
+            projects = [args.name]
+        print "Update groups to include rdoprovenpackages: %s" % (
+              ", ".join(projects))
+        for project in projects:
+            kargs['cmdargs'].name = project
+            update_groups_inc_proven(**kargs)
     elif args.command == 'check_distgit_branch':
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)

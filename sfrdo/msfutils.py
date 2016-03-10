@@ -26,6 +26,9 @@ from Crypto.PublicKey import RSA
 import requests
 
 from pysflib.sfauth import get_cookie
+from pysflib.sfgerrit import GerritUtils
+
+from requests.exceptions import HTTPError
 
 
 class SFManagerException(Exception):
@@ -259,3 +262,23 @@ def delete_user(sf_url, login, password, username=None, email=None):
         query = '?email=%s' % email
         requests.delete('http://' + sf_url + "/manage/services_users/" + query,
                         cookies=auth_cookie)
+
+
+def get_group_id(sf_url, username, password, grpname):
+    c = GerritUtils('http://' + sf_url,
+                    auth_cookie=get_cookie(sf_url, username, password))
+    return c.get_group_id(grpname)
+
+
+def add_group_in_gerrit_group(sf_url, username, password, in_id,
+                              to_include_id):
+    c = GerritUtils('http://' + sf_url,
+                    auth_cookie=get_cookie(sf_url, username, password))
+    try:
+        c.g.get('groups/%s/groups/%s' % (in_id, to_include_id))
+        print '%s Already included in %s !' % (to_include_id, in_id)
+    except HTTPError:
+        # Suppose here the groups in not included
+        c.g.post('groups/%s/groups/%s' % (in_id, to_include_id),
+                 headers={})
+        print '%s included in %s.' % (to_include_id, in_id)
