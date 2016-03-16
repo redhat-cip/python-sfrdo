@@ -192,10 +192,13 @@ RDOINFOS_FIXES = {
 }
 
 
-def fetch_rdoinfo():
+def fetch_rdoinfo(repo=None):
     if not os.path.isdir(config.userdir):
         os.mkdir(config.userdir)
-    rm = RepoManager(config.userdir, config.rdoinfo, verbose=True)
+    rdoinfo_repo = config.rdoinfo
+    if repo:
+        rdoinfo_repo = repo
+    rm = RepoManager(config.userdir, rdoinfo_repo, verbose=True)
     rm.init(force_fetch=True)
     file, path, desc = imp.find_module('rdoinfo', [rm.repo_path])
     rdoinfo = imp.load_module('rdoinfo', file, path, desc)

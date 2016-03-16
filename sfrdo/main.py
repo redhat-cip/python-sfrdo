@@ -1071,6 +1071,10 @@ def main():
         '--distgit', action='store_true', default=None,
         help='Only act on distgit project branches '
              '[migration helper]')
+    parser_sync_repo.add_argument(
+        '--puppet', action='store_true', default=None,
+        help='Sync puppet mirror repo from upstream '
+             '[use rdoinfo fork]')
 
     parser_sync_gp_distgit = subparsers.add_parser(
         'sync_gp_distgit',
@@ -1302,6 +1306,11 @@ def main():
         kargs['rtype'] = 'mirror'
         if args.distgit:
             kargs['rtype'] = 'distgit'
+        if kargs['rtype'] == 'mirror' and args.puppet:
+            # Use our rdoinfo fork where puppet repo are described
+            rdoinfo_fork = 'http://rpmfactory.beta.rdoproject.org/r/rdoinfo'
+            rdoinfo = rdoinfoutils.fetch_rdoinfo(repo=rdoinfo_fork)
+            kargs['rdoinfo'] = rdoinfo
         final_status = {}
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
