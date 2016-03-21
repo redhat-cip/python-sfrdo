@@ -250,7 +250,7 @@ def fetch_project_infos(rdoinfo, upstream_project_name):
 
 def display_details(cmdargs, rdoinfo, workdir=None):
     name, distgit, upstream, \
-        sfdistgit, maints, conf, mdistgit, patches = \
+        sfdistgit, maints, conf, mdistgit = \
         fetch_project_infos(rdoinfo, cmdargs.name)
     print "=== Details ==="
     print "Project name is: %s" % name

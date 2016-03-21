@@ -168,13 +168,16 @@ def import_distgit(msf, sfgerrit, sfdistgit, distgit, mdistgit,
     try:
         create_baseproject(msf, sfdistgit,
                            "\"Packaging content for %s (distgit)\"" %
-                           sfdistgit.split('-')[0])
+                           sfdistgit.replace('-distgit', ''))
     except msfutils.SFManagerException, e:
         print "Unable to create %s: %s" % (sfdistgit, e)
         sys.exit(1)
     with cdir(workdir):
         git('clone', 'http://%s/r/%s' % (config.rpmfactory, sfdistgit),
             sfdistgit)
+    if conf == 'rpmfactory-puppet':
+        # Nothing to do here
+        return
     with cdir(os.path.join(workdir, sfdistgit)):
         # Set remotes and fetch objects
         git('remote', 'add', 'gerrit', sfgerrit + sfdistgit)
@@ -508,7 +511,7 @@ def check_upstream_and_sync(name, workdir, local, branch,
 def project_import(cmdargs, workdir, rdoinfo):
     print "\n=== Start import ==="
     name, distgit, upstream, \
-        sfdistgit, maints, conf, mdistgit, patches = \
+        sfdistgit, maints, conf, mdistgit = \
         rdoinfoutils.fetch_project_infos(rdoinfo, cmdargs.name)
 
     sfgerrit = config.gerrit_rpmfactory % config.userlogin
@@ -559,7 +562,7 @@ def project_import(cmdargs, workdir, rdoinfo):
         delete_project(name)
         return False
 
-    if in_liberty:
+    if in_liberty and not conf == 'rpmfactory-puppet':
         try:
             set_patches_on_mirror(msf, sfgerrit, name, sfdistgit,
                                   workdir)
@@ -1053,6 +1056,9 @@ def main():
     parser_import.add_argument(
         '--serviceuser', action='store_true', default=None,
         help='Use service identity to sync (set in config.py)')
+    parser_import.add_argument('--rdoinfo_fork',
+                               action='store_true', default=False,
+                               help='Use current rdoinfo fork')
 
     parser_create = subparsers.add_parser(
         'create',
@@ -1231,6 +1237,12 @@ def main():
         '--type', type=str, default=None,
         help='Limit to imported projects of type (core, client, lib)')
 
+    parser_delete_projects = subparsers.add_parser(
+        'delete_projects',
+        help='Delete a projects from a list (file)')
+    parser_delete_projects.add_argument(
+        '--file', type=str, help='List of project names')
+
     args = parser.parse_args()
     rdoinfo = rdoinfoutils.fetch_rdoinfo()
     if not args.workdir:
@@ -1242,6 +1254,11 @@ def main():
              'rdoinfo': rdoinfo}
 
     if args.command == 'import':
+        if args.rdoinfo_fork:
+            # Use our rdoinfo fork where puppet repo are described
+            rdoinfo_fork = 'http://rpmfactory.beta.rdoproject.org/r/rdoinfo'
+            rdoinfo = rdoinfoutils.fetch_rdoinfo(repo=rdoinfo_fork)
+            kargs['rdoinfo'] = rdoinfo
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
             if args.from_p:
@@ -1395,6 +1412,22 @@ def main():
         for project in projects:
             kargs['cmdargs'].name = project
             update_groups_inc_proven(**kargs)
+    elif args.command == "delete_projects":
+        msf = msfutils.ManageSfUtils('http://' + config.rpmfactory,
+                                     'admin', config.adminpass)
+        if args.file and os.path.isfile(args.file):
+            for project in file(args.file).readlines():
+                project = project.strip()
+                distgit = project + '-distgit'
+                for repo in (project, distgit):
+                    try:
+                        print "Attempt to delete %s" % repo
+                        msf.deleteProject(repo)
+                    except msfutils.SFManagerException, e:
+                        print "Skip %s as delete failed (%s)" % (repo, e)
+            sys.exit(0)
+        print "Provide a file to read."
+        sys.exit(1)
     elif args.command == 'check_distgit_branch':
         if args.type:
             projects = fetch_all_project_type(rdoinfo, args.type)
