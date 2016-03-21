@@ -5,3 +5,6 @@ urllib3==1.11
 rdopkg
 requests[security]
 PyYAML
+python-redmine==1.5.0
+six==1.10.0
+-e git+https://github.com/morucci/pygerrit.git#egg=pygerrit
