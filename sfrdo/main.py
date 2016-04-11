@@ -803,11 +803,15 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     if rtype == 'mirror':
         push_tags = True
         branches = ((upstream, 'master', 'master'),
-                    (upstream, 'stable/liberty', 'stable/liberty'))
+                    (upstream, 'stable/liberty', 'stable/liberty'),
+                    (upstream, 'stable/mitaka', 'stable/mitaka'))
     elif rtype == 'distgit':
         if conf == 'core':
             branches = [
-                (distgit, 'rdo-liberty', 'rdo-liberty'),
+                (distgit, 'liberty-rdo', 'rdo-liberty'),
+                (distgit, 'liberty-rdo', 'liberty-rdo'),
+                (distgit, 'mitaka-rdo', 'rdo-mitaka'),
+                (distgit, 'mitaka-rdo', 'mitaka-rdo'),
             ]
         elif conf == 'client' or conf == 'lib' or conf == 'None':
             branches = []
@@ -820,12 +824,17 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
                 if in_liberty:
                     # Check this above prevents when we request a missing repo
                     # that not exists on pkgs.fedoraproject.org
-                    branches.extend(((distgit, 'rdo-liberty', 'master'),))
+                    branches.extend(((distgit, 'liberty-rdo', 'master'),))
+                    branches.extend(((distgit, 'mitaka-rdo', 'master'),))
             # The NOT_IN_LIBERTY list is not fully accurate and sometime
             # a rdo-liberty branch exists on Github so fetch it if exists.
-            branches.extend(((mdistgit, 'rdo-liberty', 'rdo-liberty'),))
+            branches.extend(((mdistgit, 'liberty-rdo', 'rdo-liberty'),))
+            branches.extend(((mdistgit, 'liberty-rdo', 'liberty-rdo'),))
+            branches.extend(((mdistgit, 'mitaka-rdo', 'rdo-mitaka'),))
+            branches.extend(((mdistgit, 'mitaka-rdo', 'mitaka-rdo'),))
 
-        branches.extend(((mdistgit, 'rdo-kilo', 'rdo-kilo'),
+        branches.extend(((mdistgit, 'kilo-rdo', 'rdo-kilo'),
+                         (mdistgit, 'kilo-rdo', 'kilo-rdo'),
                          (mdistgit, 'rpm-master', 'rpm-master'),
                          (mdistgit, 'rpm-liberty', 'rpm-liberty'),
                          (mdistgit, 'rpm-kilo', 'rpm-kilo'),))
@@ -838,9 +847,9 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
                                          push_tags=push_tags)
         if branch[0].find('pkgs.fedoraproject.org') >= 0:
             # Just for clarify the summary
-            branch_name = "%s (legacy)" % branch[1]
+            branch_name = "%s (legacy)(<-%s)" % (branch[1], branch[2])
         else:
-            branch_name = branch[1]
+            branch_name = "%s (<-%s)" % (branch[1], branch[2])
         ret[branch_name] = status
 
     return ret
