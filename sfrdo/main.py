@@ -106,7 +106,7 @@ def sync_and_push_branch(rfrom, rto, branch, tbranch=None):
         tbranch = branch
     print "sync from %s:%s and push to %s:%s" % (
         rfrom, branch, rto, tbranch)
-    if tbranch == 'master':
+    if tbranch == 'master' or tbranch == 'rpm-master':
         git('checkout', tbranch)
     else:
         git('checkout', '-b', tbranch)
