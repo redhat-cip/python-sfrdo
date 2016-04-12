@@ -837,6 +837,7 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
                          (mdistgit, 'kilo-rdo', 'kilo-rdo'),
                          (mdistgit, 'rpm-master', 'rpm-master'),
                          (mdistgit, 'rpm-liberty', 'rpm-liberty'),
+                         (mdistgit, 'rpm-mitaka', 'rpm-mitaka'),
                          (mdistgit, 'rpm-kilo', 'rpm-kilo'),))
 
     ret = {}
