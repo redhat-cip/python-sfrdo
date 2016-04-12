@@ -20,7 +20,7 @@ userdir = os.path.join(os.path.expanduser('~/'), '.sfrdo')
 
 rdoinfo = 'https://github.com/redhat-openstack/rdoinfo.git'
 
-rpmfactory = 'rpmfactory.beta.rdoproject.org'
+rpmfactory = 'review.rdoproject.org'
 gerrit_rpmfactory = 'ssh://%%s@%s:29418/' % rpmfactory
 service_user_name = 'sfrdobender'
 service_user_mail = '%s@rpmfactory.beta.rdoproject.org' % service_user_name
