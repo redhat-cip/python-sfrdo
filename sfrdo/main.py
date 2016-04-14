@@ -479,8 +479,9 @@ def check_upstream_and_sync(name, workdir, local, branch,
             shutil.rmtree(pdir)
         try:
             with cdir(workdir):
-                git('clone', 'http://%s/r/%s' % (config.rpmfactory, name),
-                    name)
+                #git('clone', 'http://%s/r/%s' % (config.rpmfactory, name),
+                #    name)
+                git('clone', local, name)
             with cdir(pdir):
                 # Set remotes and fetch objects
                 git('remote', 'add', 'local', local)
@@ -685,6 +686,7 @@ def project_sync_maints(cmdargs, workdir, rdoinfo):
 def get_project_status(projects, typ):
     r = requests.get('http://%s/r/projects/?d' % config.rpmfactory)
     sfprojects = json.loads(r.text[4:])
+    sfprojects = [os.path.basename(p) for p in sfprojects]
 
     status = {}
     for project in projects:
@@ -801,11 +803,16 @@ def refresh_repo_for_project(cmdargs, workdir, rdoinfo, rtype):
     push_tags = False
 
     if rtype == 'mirror':
+        if cmdargs.puppet == True:
+            local = sfgerrit + 'puppet/' + name
+        else:
+            local = sfgerrit + 'openstack/' + name
         push_tags = True
         branches = ((upstream, 'master', 'master'),
                     (upstream, 'stable/liberty', 'stable/liberty'),
                     (upstream, 'stable/mitaka', 'stable/mitaka'))
     elif rtype == 'distgit':
+        local = sfgerrit + 'openstack/' + name
         if conf == 'core':
             branches = [
                 (distgit, 'liberty-rdo', 'rdo-liberty'),
@@ -1363,7 +1370,7 @@ def main():
             kargs['rtype'] = 'distgit'
         if kargs['rtype'] == 'mirror' and args.puppet:
             # Use our rdoinfo fork where puppet repo are described
-            rdoinfo_fork = 'http://rpmfactory.beta.rdoproject.org/r/rdoinfo'
+            rdoinfo_fork = 'http://review.rdoproject.org/r/rdoinfo'
             rdoinfo = rdoinfoutils.fetch_rdoinfo(repo=rdoinfo_fork)
             kargs['rdoinfo'] = rdoinfo
         final_status = {}
