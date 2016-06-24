@@ -1,6 +1,8 @@
 python-sfrdo
 ============
 
+This tool is deprecated.
+
 Hacking
 -------
 
