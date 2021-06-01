@@ -1,7 +1,7 @@
 -e git+https://github.com/redhat-cip/python-sfmanager.git#egg=python-sfmanager
 -e git+https://github.com/redhat-cip/pysflib.git#egg=pysflib
 pycrypto==2.6.1
-urllib3==1.11
+urllib3==1.26.5
 rdopkg
 requests[security]
 PyYAML
